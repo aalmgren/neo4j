@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Arquivos temporários
+*.old
+*.bak
+*.tmp
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Arquivos de backup
+*_backup.json
+*_remote_backup.json
+*_1.json
+
+# Dados sensíveis (se houver)
+.env
+*.key
+*.pem
+

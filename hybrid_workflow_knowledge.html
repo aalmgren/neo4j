@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fixed Workflow + Dynamic Knowledge Network</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 10px;
+            margin: 0;
+        }
+        
+        #svg-container {
+            width: 100%;
+            height: 80vh;
+            border: 1px solid #ddd;
+            overflow: auto;
+            position: relative;
+        }
+        
+        #hybrid-graph {
+            display: block;
+            cursor: grab;
+        }
+        
+        #hybrid-graph:active {
+            cursor: grabbing;
+        }
+        
+        /* Node styles - colors applied via JavaScript */
+        .workflow-node, .sub-step-node, .knowledge-node, .detail-node, .subitem-node { 
+            stroke-width: 2px;
+            cursor: pointer;
+        }
+        
+        .workflow-text {
+            fill: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+        }
+        
+        /* All knowledge node styles removed - will be added with Level 3 later */
+        
+        .workflow-node:hover {
+            stroke-width: 5px;
+            filter: drop-shadow(0 0 10px rgba(33, 150, 243, 0.5));
+        }
+        
+        .pulsing {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { r: 25; }
+            50% { r: 28; }
+            100% { r: 25; }
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 280px;
+            line-height: 1.4;
+        }
+        
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .legend-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #333;
+        }
+        
+        .stats {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .stat-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2E7D32;
+        }
+        
+        .controls {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 6px;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .control-button {
+            margin: 5px;
+            padding: 8px 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .control-button:hover {
+            background: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="svg-container">
+            <svg id="hybrid-graph"></svg>
+        </div>
+        
+        <div class="stats" id="stats">
+            <h4>Metrics</h4>
+            <div class="stats-grid" id="stats-grid"></div>
+            <button class="control-button" onclick="zoomToFit()" style="margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px;">
+                Zoom to Fit
+            </button>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Category color mapping (12 categories from JSON)
+        const categoryColors = {
+            '🔧 ACTION': '#E91E63',           // Pink
+            '✅ VALIDATION': '#9C27B0',        // Purple
+            '📊 PARAMETER': '#3F51B5',         // Indigo
+            '💡 RATIONALE': '#2196F3',         // Blue
+            '⭐ BEST_PRACTICE': '#4CAF50',     // Green
+            '⚠️ WARNING': '#FF9800',           // Orange
+            '🔀 OPTION': '#FF5722',            // Deep Orange
+            '📝 DOCUMENTATION': '#795548',     // Brown
+            '🧮 FORMULA': '#607D8B',           // Blue Grey
+            '📦 DELIVERABLE': '#00BCD4',       // Cyan
+            '📥 INPUT': '#8BC34A',             // Light Green
+            '🎯 DECISION': '#FFC107'           // Amber
+        };
+        
+        // Default colors by level (quando category não existe)
+        const levelColors = {
+            1: '#2196F3',  // Blue
+            2: '#4CAF50',  // Green
+            3: '#FF9800',  // Orange
+            4: '#9C27B0',  // Purple
+            5: '#E91E63'   // Pink
+        };
+        
+        // Helper function to get color
+        const getNodeColor = (d, level) => categoryColors[d.category] || levelColors[level] || '#999999';
+        
+        // Configuração
+        // Get dynamic dimensions - increased to accommodate all nodes
+        const svgElement = document.getElementById('hybrid-graph');
+        const containerWidth = window.innerWidth - 40;
+        const containerHeight = window.innerHeight * 0.8;
+        
+        // Calculate required canvas size based on orbit radii
+        const level2OrbitRadius = 100;
+        const level2WithChildrenRadius = 190;  // Raio maior para Level 2 que tem filhos Level 3
+        const level3OrbitRadius = 100;
+        const level4OrbitRadius = 20;
+        const level5OrbitRadius = 20;  // Level 5 orbit around Level 4
+        const nodePadding = 100; // Extra space for nodes
+        
+        // Calculate total radius needed for one workflow cluster
+        const maxClusterRadius = level2OrbitRadius + level3OrbitRadius + level4OrbitRadius + level5OrbitRadius + nodePadding;
+        
+        // SVG canvas size should fit all 6 workflows horizontally + vertical space
+        const numWorkflows = 6; // We know there are 6 workflows from the data
+        const width = Math.max(containerWidth, (maxClusterRadius * 2 * numWorkflows) + 200);
+        const height = Math.max(containerHeight, (maxClusterRadius * 2) + 200);
+        
+        const svg = d3.select("#hybrid-graph")
+            .attr("width", width)
+            .attr("height", height);
+            
+        const tooltip = d3.select("#tooltip");
+
+        // Center point for visualization
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const safetyMargin = 80;
+        
+        // Calculate galaxy radius
+        const galaxyRadius = Math.min(
+            (width / 2) - level2OrbitRadius - level3OrbitRadius - level4OrbitRadius - level5OrbitRadius - safetyMargin,
+            (height / 2) - level2OrbitRadius - level3OrbitRadius - level4OrbitRadius - level5OrbitRadius - safetyMargin
+        );
+
+        // Variáveis globais para dados carregados do JSON
+        let workflowData = [];
+        let subStepsData = {};
+        let knowledgeData = []; // Level 3 knowledge items
+        let detailData = [];     // Level 4 detail items
+        let subItemData = [];    // Level 5 sub-items
+
+        // Helper: Calculate orbital position (pythonic approach)
+        const calcOrbit = (centerX, centerY, index, total, radius) => ({
+            angle: (index / Math.max(total, 1)) * 2 * Math.PI,
+            x: centerX + Math.cos((index / Math.max(total, 1)) * 2 * Math.PI) * radius,
+            y: centerY + Math.sin((index / Math.max(total, 1)) * 2 * Math.PI) * radius
+        });
+        
+        // Helper: Remove emojis from text
+        const removeEmojis = (text) => {
+            if (!text) return '';
+            // Remove emojis (Unicode ranges for emojis)
+            return text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]/gu, '').trim();
+        };
+
+        // Função para carregar dados do JSON
+        async function loadDataFromJSON() {
+            try {
+                const response = await fetch('best_practices_structured.json');
+                const data = await response.json();
+                
+                // NÍVEL 1: Workflow (sections com level === 1 e que têm subsections)
+                let workflowCounter = 0;
+                const workflowSections = data.sections.filter(s => s.level === 1 && s.subsections && s.subsections.length > 0);
+                const numWorkflows = workflowSections.length;
+                
+                workflowSections.forEach((section, index) => {
+                    const id = `workflow_${workflowCounter}`;
+                    
+                    // Posição HORIZONTAL da esquerda para direita (workflow order)
+                    // Distribui uniformemente ao longo de METADE da largura (mais próximos)
+                    const margin = 100; // Margem nas bordas
+                    const usableWidth = (width - 2 * margin) * 0.5; // Use only 50% of width
+                    const startX = margin + (width - 2 * margin - usableWidth) / 2 + (index / (numWorkflows - 1)) * usableWidth;
+                    const startY = centerY; // Centralizado verticalmente
+                    
+                    workflowData.push({
+                        id: id,
+                        name: section.title.replace(/^\d+\.\s*/, '').replace(/ /g, '\n'),
+                        x: startX,
+                        y: startY,
+                        description: section.title,
+                        category: section.category,
+                        order: index
+                    });
+                    
+                    // NÍVEL 2: Substeps (subsections com level === 2)
+                    subStepsData[id] = [];
+                    const level2Substeps = section.subsections.filter(s => s.level === 2);
+                    
+                    // Contar Level 3 nesta section
+                    let level3CountInSection = 0;
+                    level2Substeps.forEach(sub => {
+                        if (sub.items) {
+                            level3CountInSection += sub.items.filter(i => i.level === 3).length;
+                        }
+                    });
+                    console.log(`📊 Section "${section.title}": ${level2Substeps.length} level2, ${level3CountInSection} level3 esperados`);
+                    
+                    level2Substeps.forEach((substep, level2Idx) => {
+                        const substepId = `${id}_sub_${level2Idx}`;
+                        
+                        // Verificar se este substep tem filhos (Level 3)
+                        const hasChildren = substep.items && substep.items.some(i => i.level === 3);
+                        const orbitRadius = hasChildren ? level2WithChildrenRadius : level2OrbitRadius;
+                        
+                        const substepPos = calcOrbit(startX, startY, level2Idx, level2Substeps.length, orbitRadius);
+                        
+                        subStepsData[id].push({
+                            id: substepId,
+                            name: substep.title.replace(/ /g, '\n'),
+                            x: substepPos.x,
+                            y: substepPos.y,
+                            parent: id,
+                            category: substep.category,
+                            type: substep.type,
+                            targetAngle: substepPos.angle,
+                            orbitRadius: orbitRadius  // Armazenar para usar na força
+                        });
+                            
+                        // NÍVEL 3: Knowledge items (items com level === 3)
+                        // OU NÍVEL 4 direto se não houver nível 3
+                        if (substep.items && substep.items.length > 0) {
+                            // DEBUG: Log para Compositing validation
+                            if (substep.title.includes("Compositing validation")) {
+                                console.log(`🔍 Processing "Compositing validation":`);
+                                console.log(`   - Total items: ${substep.items.length}`);
+                                substep.items.forEach((item, idx) => {
+                                    console.log(`   - Item ${idx}: level=${item.level}, title="${item.title}"`);
+                                });
+                            }
+                            
+                            const level3Items = substep.items.filter(i => i.level === 3);
+                            const level4DirectItems = substep.items.filter(i => i.level === 4);
+                            
+                            // Se tem nível 3, processar normalmente
+                            level3Items.forEach((item, level3Idx) => {
+                                const itemId = `${substepId}_item_${level3Idx}`;
+                                const pos = calcOrbit(substepPos.x, substepPos.y, level3Idx, level3Items.length, level3OrbitRadius);
+                                
+                                // DEBUG
+                                if (substep.title.includes("Compositing validation")) {
+                                    console.log(`   ✓ Creating Level 3 node: "${item.title}"`);
+                                    console.log(`     - Position: (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
+                                    console.log(`     - Parent: ${substepId}`);
+                                }
+                                        
+                                knowledgeData.push({
+                                    id: itemId,
+                                    name: item.title,
+                                    x: pos.x,
+                                    y: pos.y,
+                                    parent: substepId,
+                                    category: item.category,
+                                    type: item.type,
+                                    fullContent: item.title,
+                                    targetAngle: pos.angle
+                                });
+                                    
+                                // NÍVEL 4: Detail items (details com level === 4)
+                                if (item.details && item.details.length > 0) {
+                                    const level4Details = item.details.filter(d => d.level === 4);
+                                    level4Details.forEach((detail, level4Idx) => {
+                                        const detailId = `${itemId}_detail_${level4Idx}`;
+                                        const detailPos = calcOrbit(pos.x, pos.y, level4Idx, level4Details.length, level4OrbitRadius);
+                                        
+                                        detailData.push({
+                                            id: detailId,
+                                            name: detail.content,
+                                            x: detailPos.x,
+                                            y: detailPos.y,
+                                            parent: itemId,
+                                            category: detail.category,
+                                            type: detail.category,
+                                            fullContent: detail.content,
+                                            targetAngle: detailPos.angle
+                                        });
+                                                
+                                        // NÍVEL 5: Sub-items (sub_items com level === 5)
+                                        if (detail.sub_items && detail.sub_items.length > 0) {
+                                            const level5SubItems = detail.sub_items.filter(s => s.level === 5);
+                                            level5SubItems.forEach((subItem, level5Idx) => {
+                                                const subItemId = `${detailId}_subitem_${level5Idx}`;
+                                                const subPos = calcOrbit(detailPos.x, detailPos.y, level5Idx, level5SubItems.length, level5OrbitRadius);
+                                                
+                                                subItemData.push({
+                                                    id: subItemId,
+                                                    name: subItem.content || subItem.title || 'SubItem',
+                                                    x: subPos.x,
+                                                    y: subPos.y,
+                                                    parent: detailId,
+                                                    category: subItem.category,
+                                                    type: subItem.category || subItem.type,
+                                                    fullContent: subItem.content || subItem.title,
+                                                    targetAngle: subPos.angle
+                                                });
+                                            });
+                                        }
+                                    });
+                                }
+                            });
+                            
+                            // Se NÃO tem nível 3, mas TEM nível 4 direto, orbitar o nível 2
+                            if (level3Items.length === 0 && level4DirectItems.length > 0) {
+                                level4DirectItems.forEach((detail, level4Idx) => {
+                                    const detailId = `${substepId}_direct_detail_${level4Idx}`;
+                                    const detailPos = calcOrbit(substepPos.x, substepPos.y, level4Idx, level4DirectItems.length, level3OrbitRadius);
+                                    
+                                    detailData.push({
+                                        id: detailId,
+                                        name: detail.content || detail.title || 'Detail',
+                                        x: detailPos.x,
+                                        y: detailPos.y,
+                                        parent: substepId,
+                                        category: detail.category,
+                                        type: detail.category,
+                                        fullContent: detail.content || detail.title || '',
+                                        targetAngle: detailPos.angle
+                                    });
+                                });
+                            }
+                        }
+                    });
+                        
+                        workflowCounter++;
+                });
+                
+                console.log(`✅ Data loaded from JSON:`);
+                console.log(`   - Canvas: ${width}x${height}px`);
+                console.log(`   - Center: (${centerX}, ${centerY})`);
+                console.log(`   - Galaxy radius: ${galaxyRadius.toFixed(0)}px`);
+                console.log(`   - Level 2 orbit: ${level2OrbitRadius}px`);
+                console.log(`   - Level 3 orbit: ${level3OrbitRadius}px`);
+                console.log(`   - Level 4 orbit: ${level4OrbitRadius}px`);
+                console.log(`   - Level 5 orbit: ${level5OrbitRadius}px`);
+                console.log(`   - Workflow (Level 1): ${workflowData.length} nodes`);
+                console.log(`   - Substeps (Level 2): ${Object.values(subStepsData).flat().length} nodes`);
+                console.log(`   - Knowledge (Level 3): ${knowledgeData.length} nodes ⚠️ ESPERADO: 241`);
+                console.log(`   - Details (Level 4): ${detailData.length} nodes`);
+                console.log(`   - SubItems (Level 5): ${subItemData.length} nodes`);
+                
+                // Verificação adicional
+                if (knowledgeData.length < 241) {
+                    console.warn(`⚠️ PROBLEMA: Faltam ${241 - knowledgeData.length} nos de nivel 3!`);
+                }
+                
+                // Initialize visualization
+                drawWorkflow();
+                setupSimulation();
+                updateStats();
+                
+                // Auto zoom to fit after data loads
+                setTimeout(() => {
+                    zoomToFit();
+                }, 500); // Small delay to ensure nodes are positioned
+                
+            } catch (error) {
+                console.error('❌ Error loading JSON:', error);
+            }
+        }
+
+        // Knowledge network data LOADED FROM JSON
+        // (hardcoding removed - will be filled by loadDataFromJSON)
+
+        // Create SVG elements
+        const g = svg.append("g");
+
+        // Workflow group
+        const workflowGroup = g.append("g").attr("class", "workflow-group");
+        
+        // Knowledge group
+        const knowledgeGroup = g.append("g").attr("class", "knowledge-group");
+        
+        // Detail group
+        const detailGroup = g.append("g").attr("class", "detail-group");
+
+        // Function to draw fixed workflow (NOW MOBILE)
+        function drawWorkflow() {
+            // Create links data
+            const allSubSteps = Object.values(subStepsData).flat();
+            
+            // Links between Level 1 nodes (sequential workflow order)
+            const level1Links = [];
+            for (let i = 0; i < workflowData.length - 1; i++) {
+                level1Links.push({
+                    source: workflowData[i],
+                    target: workflowData[i + 1]
+                });
+            }
+            
+            // Links between Level 2 and their Level 1 parents
+            const level2Links = allSubSteps.map(substep => ({
+                source: workflowData.find(w => w.id === substep.parent),
+                target: substep
+            }));
+            
+            // Links between Level 3 and their Level 2 parents
+            const level3Links = knowledgeData.map(knowledge => {
+                const parent = allSubSteps.find(s => s.id === knowledge.parent);
+                return {
+                    source: parent,
+                    target: knowledge
+                };
+            });
+            
+            // Links between Level 4 and their Level 3 parents
+            const level4Links = detailData.map(detail => {
+                const parent = knowledgeData.find(k => k.id === detail.parent);
+                return {
+                    source: parent,
+                    target: detail
+                };
+            });
+            
+            // Links between Level 5 and their Level 4 parents
+            const level5Links = subItemData.map(subItem => {
+                const parent = detailData.find(d => d.id === subItem.parent);
+                return {
+                    source: parent,
+                    target: subItem
+                };
+            });
+            
+            // Draw Level 1 sequential links (workflow order)
+            workflowGroup.selectAll(".level1-link")
+                .data(level1Links)
+                .enter().append("line")
+                .attr("class", "level1-link")
+                .style("stroke", "#8B0000")
+                .style("stroke-width", 3)
+                .style("stroke-opacity", 0.6)
+                .style("stroke-dasharray", "5,5");
+            
+            // Draw Level 2 to Level 1 links (parent-child)
+            workflowGroup.selectAll(".level2-link")
+                .data(level2Links)
+                .enter().append("line")
+                .attr("class", "level2-link")
+                .style("stroke", "#DC143C")
+                .style("stroke-width", 2)
+                .style("stroke-opacity", 0.5);
+            
+            // Draw Level 3 to Level 2 links (parent-child)
+            workflowGroup.selectAll(".level3-link")
+                .data(level3Links)
+                .enter().append("line")
+                .attr("class", "level3-link")
+                .style("stroke", "#FF6B6B")
+                .style("stroke-width", 1.5)
+                .style("stroke-opacity", 0.45);
+            
+            // Draw Level 4 to Level 3 links (parent-child)
+            workflowGroup.selectAll(".level4-link")
+                .data(level4Links)
+                .enter().append("line")
+                .attr("class", "level4-link")
+                .style("stroke", "#FFB6C1")
+                .style("stroke-width", 1)
+                .style("stroke-opacity", 0.4);
+            
+            // Draw Level 5 to Level 4 links (parent-child)
+            workflowGroup.selectAll(".level5-link")
+                .data(level5Links)
+                .enter().append("line")
+                .attr("class", "level5-link")
+                .style("stroke", "#FFE4E1")
+                .style("stroke-width", 0.5)
+                .style("stroke-opacity", 0.35);
+            
+            // Workflow macro nodes - NOW WITH DRAG
+            const workflowNodes = workflowGroup.selectAll(".workflow-node-group")
+                .data(workflowData)
+                .enter().append("g")
+                .attr("class", "workflow-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            workflowNodes.append("circle")
+                .attr("class", "workflow-node")
+                .attr("r", 30)
+                .style("fill", d => getNodeColor(d, 1))
+                .style("stroke", d => d3.color(getNodeColor(d, 1)).darker(1))
+                .style("stroke-width", 2);
+            
+            workflowNodesSelection = workflowNodes;
+
+            // Draw sub-steps
+            const subStepNodes = workflowGroup.selectAll(".sub-step-node-group")
+                .data(allSubSteps)
+                .enter().append("g")
+                .attr("class", "sub-step-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            subStepNodes.append("circle")
+                .attr("class", "sub-step-node")
+                .attr("r", 15)
+                .style("fill", d => getNodeColor(d, 2))
+                .style("stroke", d => d3.color(getNodeColor(d, 2)).darker(1))
+                .style("stroke-width", 2);
+            
+            subStepNodesSelection = subStepNodes;
+
+            // Draw Level 3 knowledge nodes
+            const knowledgeNodes = workflowGroup.selectAll(".knowledge-node-group")
+                .data(knowledgeData)
+                .enter().append("g")
+                .attr("class", "knowledge-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            knowledgeNodes.append("circle")
+                .attr("class", "knowledge-node")
+                .attr("r", 8)
+                .style("fill", d => getNodeColor(d, 3))
+                .style("stroke", d => d3.color(getNodeColor(d, 3)).darker(1))
+                .style("stroke-width", 1.5);
+            
+            knowledgeNodesSelection = knowledgeNodes;
+            
+            // Draw Level 4 detail nodes
+            const detailNodes = workflowGroup.selectAll(".detail-node-group")
+                .data(detailData)
+                .enter().append("g")
+                .attr("class", "detail-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            detailNodes.append("circle")
+                .attr("class", "detail-node")
+                .attr("r", 5)
+                .style("fill", d => getNodeColor(d, 4))
+                .style("stroke", d => d3.color(getNodeColor(d, 4)).darker(1))
+                .style("stroke-width", 1);
+            
+            detailNodesSelection = detailNodes;
+            
+            // Draw Level 5 sub-item nodes
+            const subItemNodes = workflowGroup.selectAll(".subitem-node-group")
+                .data(subItemData)
+                .enter().append("g")
+                .attr("class", "subitem-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            subItemNodes.append("circle")
+                .attr("class", "subitem-node")
+                .attr("r", 3)
+                .style("fill", d => getNodeColor(d, 5))
+                .style("stroke", d => d3.color(getNodeColor(d, 5)).darker(1))
+                .style("stroke-width", 0.5);
+            
+            subItemNodesSelection = subItemNodes;
+
+            // Workflow macro events
+            workflowNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.name.replace('\n', ' ')}</strong>
+                        ${d.id === 'eda' ? '<br/><strong>Feature:</strong> Cyclic process' : ''}
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+                    
+                highlightConnections(d.id);
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+                resetHighlights();
+            });
+            
+            // Sub-steps events
+            subStepNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.name.replace('\n', ' ')}</strong>
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+                    
+                highlightConnections(d.id);
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+                resetHighlights();
+            });
+            
+            // Level 3 knowledge events
+            knowledgeNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.fullContent || d.name}</strong>
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            });
+            
+            // Level 4 detail events
+            detailNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.fullContent || d.name}</strong>
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            });
+            
+            // Level 5 sub-item events
+            subItemNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.fullContent || d.name}</strong>
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            });
+        }
+        
+        // Force simulation variables
+        let simulation;
+        let knowledgeNodesSelection, influenceLinks, knowledgeLinks;
+        let workflowNodesSelection, subStepNodesSelection, detailNodesSelection, subItemNodesSelection;
+        let currentPerspective = "workflow"; // "workflow" or "knowledge"
+        
+        // Combine all nodes for simulation
+        let allNodes = [];
+        
+        // Function to draw knowledge network
+        function drawKnowledgeNetwork() {
+            // Internal knowledge links
+            knowledgeLinks = [];
+            knowledgeData.forEach(node => {
+                knowledgeData.forEach(otherNode => {
+                    if (node.id !== otherNode.id && 
+                        node.type === otherNode.type && 
+                        Math.random() > 0.7) {
+                        knowledgeLinks.push({source: node.id, target: otherNode.id});
+                    }
+                });
+            });
+
+            // Influence links (knowledge → workflow)
+            const allSubSteps = Object.values(subStepsData).flat();
+            const allTargets = [...workflowData, ...allSubSteps];
+            
+            influenceLinks = [];
+            knowledgeData.forEach(kNode => {
+                kNode.connections.forEach(wId => {
+                    const targetNode = allTargets.find(t => t.id === wId);
+                    if (targetNode) {
+                        influenceLinks.push({
+                            source: kNode.id, 
+                            target: targetNode,
+                            strength: kNode.confidence / 100,
+                            type: 'influence'
+                        });
+                    }
+                });
+            });
+
+            // Configure force simulation based on perspective
+            setupSimulation();
+
+            // Draw internal knowledge links
+            const linkSelection = knowledgeGroup.selectAll(".knowledge-link")
+                .data(knowledgeLinks);
+
+            linkSelection.enter().append("line")
+                .attr("class", "knowledge-link")
+                .merge(linkSelection);
+
+            linkSelection.exit().remove();
+
+            // Desenhar links de influência (fixos para workflow/substeps)
+            const influenceLinkSelection = knowledgeGroup.selectAll(".influence-link")
+                .data(influenceLinks);
+
+            influenceLinkSelection.enter().append("line")
+                .attr("class", "influence-link")
+                .attr("stroke-width", d => 1 + d.strength * 3)
+                .merge(influenceLinkSelection);
+
+            influenceLinkSelection.exit().remove();
+
+            // Nós de conhecimento (móveis)
+            const nodeSelection = knowledgeGroup.selectAll(".knowledge-node-group")
+                .data(knowledgeData, d => d.id);
+
+            const nodeEnter = nodeSelection.enter().append("g")
+                .attr("class", "knowledge-node-group")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            nodeEnter.append("circle")
+                .attr("class", d => `knowledge-node knowledge-${d.type}`)
+                .attr("r", d => 12 + (d.confidence / 100) * 8);
+
+            // Removido texto para melhor performance
+            // nodeEnter.append("text")...
+
+            knowledgeNodes = nodeEnter.merge(nodeSelection);
+            nodeSelection.exit().remove();
+
+            // Knowledge events
+            knowledgeNodes.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.fullContent || d.name.replace(/\n/g, ' ')}</strong>
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+                    
+                highlightConnections(d.id);
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+                resetHighlights();
+            });
+
+            // Callback da simulação
+            simulation.on("tick", ticked);
+        }
+
+        // Configure HIERARCHICAL simulation - 5 LEVELS
+        function setupSimulation() {
+            // Combine nodes: workflow + substeps + knowledge + details + subitems
+            const allSubSteps = Object.values(subStepsData).flat();
+            allNodes = [...workflowData, ...allSubSteps, ...knowledgeData, ...detailData, ...subItemData];
+            
+            // 5-level simulation with reduced forces for manual control
+            simulation = d3.forceSimulation(allNodes)
+                .force("charge", d3.forceManyBody().strength(d => {
+                    // Level 1 (workflow macro) = weak repulsion
+                    if (workflowData.includes(d)) return -500;
+                    // Level 2 (substeps) = very weak repulsion
+                    if (allSubSteps.includes(d)) return -100;
+                    // Level 3 (knowledge) = minimal repulsion
+                    if (knowledgeData.includes(d)) return -30;
+                    // Level 4 (details) = very minimal repulsion
+                    if (detailData.includes(d)) return -10;
+                    // Level 5 (subitems) = almost no repulsion
+                    return -5;
+                }))
+                .force("collision", d3.forceCollide().radius(d => {
+                    if (workflowData.includes(d)) return 50;  // Large galaxies
+                    if (allSubSteps.includes(d)) return 25;   // Medium systems
+                    if (knowledgeData.includes(d)) return 12; // Small knowledge nodes
+                    if (detailData.includes(d)) return 8;     // Very small detail nodes
+                    return 5;    // Tiny sub-item nodes
+                }))
+                .force("hierarchical", forceHierarchical())  // CUSTOM FORCE - weak
+                .force("x", d3.forceX(centerX).strength(0.005))
+                .force("y", d3.forceY(centerY).strength(0.005))
+                .alphaDecay(0.05)  // Slower cooling = smoother movements
+                .velocityDecay(0.6); // More friction = less "springy"
+            
+            if (simulation) {
+                simulation.on("tick", ticked);
+            }
+        }
+        
+        // HIERARCHICAL FORCE: Workflow left-to-right + substeps orbit around parents
+        function forceHierarchical() {
+            const strength = 0.5; // Increased force significantly for stronger orbits
+            
+            function force(alpha) {
+                const allSubSteps = Object.values(subStepsData).flat();
+                
+                // LEVEL 1: Galaxies distributed HORIZONTALLY (left to right in workflow order)
+                const numGalaxies = workflowData.length;
+                const margin = 100;
+                const usableWidth = (width - 2 * margin) * 0.5; // Use only 50% of width
+                
+                workflowData.forEach((node, i) => {
+                    // Horizontal position based on workflow order - closer together
+                    const targetX = margin + (width - 2 * margin - usableWidth) / 2 + (node.order / (numGalaxies - 1)) * usableWidth;
+                    const targetY = centerY;
+                    
+                    const dx = targetX - node.x;
+                    const dy = targetY - node.y;
+                    
+                    // Stronger pull to maintain position
+                    node.vx += dx * strength * alpha * 0.8;
+                    node.vy += dy * strength * alpha * 0.8;
+                });
+                
+                // LEVEL 2: Sub-steps (solar systems) orbit around their parent galaxies
+                allSubSteps.forEach(subStep => {
+                    const parent = workflowData.find(w => w.id === subStep.parent);
+                    if (parent) {
+                        const dx = parent.x - subStep.x;
+                        const dy = parent.y - subStep.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        // Usar o raio orbital específico do nó (pode ser diferente se tem filhos)
+                        const targetDistance = subStep.orbitRadius || level2OrbitRadius;
+                        
+                        if (distance > 0) {
+                            // Radial force to maintain orbital distance
+                            const radialForce = (distance - targetDistance) / distance * strength * alpha;
+                            subStep.vx += dx * radialForce * 1.5;
+                            subStep.vy += dy * radialForce * 1.5;
+                            
+                            // Tangential force to maintain angular distribution
+                            if (subStep.targetAngle !== undefined) {
+                                const targetX = parent.x + Math.cos(subStep.targetAngle) * targetDistance;
+                                const targetY = parent.y + Math.sin(subStep.targetAngle) * targetDistance;
+                                
+                                const tdx = targetX - subStep.x;
+                                const tdy = targetY - subStep.y;
+                                
+                                subStep.vx += tdx * strength * alpha * 2.0;
+                                subStep.vy += tdy * strength * alpha * 2.0;
+                            }
+                        }
+                    }
+                });
+                
+                // LEVEL 3: Knowledge items orbit around their Level 2 parents
+                knowledgeData.forEach(knowledge => {
+                    const parent = allSubSteps.find(s => s.id === knowledge.parent);
+                    if (parent) {
+                        const dx = parent.x - knowledge.x;
+                        const dy = parent.y - knowledge.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const targetDistance = level3OrbitRadius;
+                        
+                        if (distance > 0) {
+                            // Radial force to maintain orbital distance
+                            const radialForce = (distance - targetDistance) / distance * strength * alpha;
+                            knowledge.vx += dx * radialForce * 1.2;
+                            knowledge.vy += dy * radialForce * 1.2;
+                            
+                            // Tangential force to maintain angular distribution
+                            if (knowledge.targetAngle !== undefined) {
+                                const targetX = parent.x + Math.cos(knowledge.targetAngle) * targetDistance;
+                                const targetY = parent.y + Math.sin(knowledge.targetAngle) * targetDistance;
+                                
+                                const tdx = targetX - knowledge.x;
+                                const tdy = targetY - knowledge.y;
+                                
+                                knowledge.vx += tdx * strength * alpha * 2.0;
+                                knowledge.vy += tdy * strength * alpha * 2.0;
+                            }
+                        }
+                    }
+                });
+                
+                // LEVEL 4: Detail items orbit around their Level 3 parents
+                detailData.forEach(detail => {
+                    const parent = knowledgeData.find(k => k.id === detail.parent);
+                    if (parent) {
+                        const dx = parent.x - detail.x;
+                        const dy = parent.y - detail.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const targetDistance = level4OrbitRadius;
+                        
+                        if (distance > 0) {
+                            // Strong radial force to maintain orbital distance
+                            const radialForce = (distance - targetDistance) / distance * strength * alpha;
+                            detail.vx += dx * radialForce * 2.0;
+                            detail.vy += dy * radialForce * 2.0;
+                            
+                            // Add tangential force to maintain angular distribution
+                            if (detail.targetAngle !== undefined) {
+                                const targetX = parent.x + Math.cos(detail.targetAngle) * targetDistance;
+                                const targetY = parent.y + Math.sin(detail.targetAngle) * targetDistance;
+                                
+                                const tdx = targetX - detail.x;
+                                const tdy = targetY - detail.y;
+                                
+                                detail.vx += tdx * strength * alpha * 2.0;
+                                detail.vy += tdy * strength * alpha * 2.0;
+                            }
+                        }
+                    }
+                });
+                
+                // LEVEL 5: Sub-items orbit around their Level 4 parents
+                subItemData.forEach(subItem => {
+                    const parent = detailData.find(d => d.id === subItem.parent);
+                    if (parent) {
+                        const dx = parent.x - subItem.x;
+                        const dy = parent.y - subItem.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const targetDistance = level5OrbitRadius;
+                        
+                        if (distance > 0) {
+                            // Very strong radial force - tightest orbit
+                            const radialForce = (distance - targetDistance) / distance * strength * alpha;
+                            subItem.vx += dx * radialForce * 2.5;
+                            subItem.vy += dy * radialForce * 2.5;
+                            
+                            // Tangential force for angular distribution
+                            if (subItem.targetAngle !== undefined) {
+                                const targetX = parent.x + Math.cos(subItem.targetAngle) * targetDistance;
+                                const targetY = parent.y + Math.sin(subItem.targetAngle) * targetDistance;
+                                
+                                const tdx = targetX - subItem.x;
+                                const tdy = targetY - subItem.y;
+                                
+                                subItem.vx += tdx * strength * alpha * 2.0;
+                                subItem.vy += tdy * strength * alpha * 2.0;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            return force;
+        }
+
+        // Knowledge functions removed - will be added with Level 3 later
+
+        // Toggle perspective (disabled for now - only 2 levels)
+        function togglePerspective() {
+            alert('Perspective toggle will be enabled when Level 3 (Knowledge nodes) is added');
+        }
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (simulation && !event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (simulation && !event.active) simulation.alphaTarget(0.3).restart();
+            // Keep position fixed after drag
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        // Tick function to update positions (INCLUDING WORKFLOW)
+        function ticked() {
+            // Update Level 1 sequential links
+            workflowGroup.selectAll(".level1-link")
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            // Update Level 2 to Level 1 parent links
+            workflowGroup.selectAll(".level2-link")
+                .attr("x1", d => d.source ? d.source.x : 0)
+                .attr("y1", d => d.source ? d.source.y : 0)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            // Update Level 3 to Level 2 parent links
+            workflowGroup.selectAll(".level3-link")
+                .attr("x1", d => d.source ? d.source.x : 0)
+                .attr("y1", d => d.source ? d.source.y : 0)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            // Update Level 4 to Level 3 parent links
+            workflowGroup.selectAll(".level4-link")
+                .attr("x1", d => d.source ? d.source.x : 0)
+                .attr("y1", d => d.source ? d.source.y : 0)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            // Update Level 5 to Level 4 parent links
+            workflowGroup.selectAll(".level5-link")
+                .attr("x1", d => d.source ? d.source.x : 0)
+                .attr("y1", d => d.source ? d.source.y : 0)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            // Update internal knowledge links (old code - can be removed later)
+            knowledgeGroup.selectAll(".knowledge-link")
+                .attr("x1", d => {
+                    const source = knowledgeData.find(n => n.id === d.source.id || n.id === d.source);
+                    return source ? source.x : 0;
+                })
+                .attr("y1", d => {
+                    const source = knowledgeData.find(n => n.id === d.source.id || n.id === d.source);
+                    return source ? source.y : 0;
+                })
+                .attr("x2", d => {
+                    const target = knowledgeData.find(n => n.id === d.target.id || n.id === d.target);
+                    return target ? target.x : 0;
+                })
+                .attr("y2", d => {
+                    const target = knowledgeData.find(n => n.id === d.target.id || n.id === d.target);
+                    return target ? target.y : 0;
+                });
+
+            // Update influence links (knowledge to workflow - NOW MOBILE)
+            knowledgeGroup.selectAll(".influence-link")
+                .attr("x1", d => {
+                    const source = knowledgeData.find(n => n.id === d.source);
+                    return source ? source.x : 0;
+                })
+                .attr("y1", d => {
+                    const source = knowledgeData.find(n => n.id === d.source);
+                    return source ? source.y : 0;
+                })
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            // Update knowledge node positions (Level 3)
+            if (knowledgeNodesSelection) {
+                knowledgeNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Update detail node positions (Level 4)
+            if (detailNodesSelection) {
+                detailNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Update sub-item node positions (Level 5)
+            if (subItemNodesSelection) {
+                subItemNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Update WORKFLOW node positions (NOW MOBILE)
+            if (workflowNodesSelection) {
+                workflowNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Update SUB-STEPS positions (NOW MOBILE)
+            if (subStepNodesSelection) {
+                subStepNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+        }
+
+        // Interactivity functions simplified for 2-level display
+        function highlightConnections(nodeId) {
+            // Simplified for 2 levels only - Level 3 connections will be added later
+            console.log('Node clicked:', nodeId);
+        }
+
+        function resetHighlights() {
+            // Simplified - no highlights needed for 2-level display
+        }
+
+        function highlightInfluences() {
+            // Disabled - will be enabled with Level 3
+            alert('Influence highlighting will be enabled when Level 3 (Knowledge nodes) is added');
+        }
+
+        function redrawKnowledge() {
+            // Disabled - no knowledge network in 2-level display
+        }
+
+        function updateStats() {
+            const allSubSteps = Object.values(subStepsData).flat();
+            const stats = {
+                level1: workflowData.length,
+                level2: allSubSteps.length,
+                level3: knowledgeData.length,
+                level4: detailData.length,
+                level5: subItemData.length
+            };
+            
+            const statsHtml = `
+                <div class="stat-item">
+                    <div class="stat-number">${stats.level1}</div>
+                    <div class="stat-label">Level 1</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.level2}</div>
+                    <div class="stat-label">Level 2</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.level3}</div>
+                    <div class="stat-label">Level 3</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.level4}</div>
+                    <div class="stat-label">Level 4</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">${stats.level5}</div>
+                    <div class="stat-label">Level 5</div>
+                </div>
+            `;
+            
+            d3.select("#stats-grid").html(statsHtml);
+        }
+
+        // Zoom to fit all nodes
+        function zoomToFit() {
+            const allSubSteps = Object.values(subStepsData).flat();
+            const allNodes = [...workflowData, ...allSubSteps, ...knowledgeData, ...detailData, ...subItemData];
+            
+            if (allNodes.length === 0) {
+                console.log('⚠️ No nodes to zoom to');
+                return;
+            }
+            
+            // Calculate bounding box with actual node positions
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            allNodes.forEach(node => {
+                const nodeX = node.x || 0;
+                const nodeY = node.y || 0;
+                if (nodeX < minX) minX = nodeX;
+                if (nodeY < minY) minY = nodeY;
+                if (nodeX > maxX) maxX = nodeX;
+                if (nodeY > maxY) maxY = nodeY;
+            });
+            
+            // Add padding for node sizes
+            const padding = 150;
+            minX -= padding;
+            minY -= padding;
+            maxX += padding;
+            maxY += padding;
+            
+            // Calculate center of bounding box
+            const centerBboxX = (minX + maxX) / 2;
+            const centerBboxY = (minY + maxY) / 2;
+            
+            // Calculate required dimensions
+            const requiredWidth = maxX - minX;
+            const requiredHeight = maxY - minY;
+            
+            // Center the bounding box in the container viewport
+            const container = document.getElementById('svg-container');
+            const scrollX = centerBboxX - (containerWidth / 2);
+            const scrollY = centerBboxY - (containerHeight / 2);
+            
+            container.scrollLeft = Math.max(0, scrollX);
+            container.scrollTop = Math.max(0, scrollY);
+            
+            console.log(`📐 Zoom to Fit:`);
+            console.log(`   - Bounds: (${minX.toFixed(0)}, ${minY.toFixed(0)}) to (${maxX.toFixed(0)}, ${maxY.toFixed(0)})`);
+            console.log(`   - Center: (${centerBboxX.toFixed(0)}, ${centerBboxY.toFixed(0)})`);
+            console.log(`   - Size: ${requiredWidth.toFixed(0)}x${requiredHeight.toFixed(0)}`);
+            console.log(`   - Scroll to: (${scrollX.toFixed(0)}, ${scrollY.toFixed(0)})`);
+            console.log(`   - Total nodes: ${allNodes.length}`);
+        }
+
+        // Initialization: load data from JSON
+        loadDataFromJSON();
+    </script>
+</body>
+</html>
