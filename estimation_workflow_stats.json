@@ -1,0 +1,24 @@
+{
+  "total_sections": 8,
+  "category_counts": {
+    "VALIDATION": 145,
+    "RATIONALE": 719,
+    "DOCUMENTATION": 197,
+    "DECISION": 132,
+    "ACTION": 105,
+    "FORMULA": 56,
+    "WARNING": 54,
+    "PARAMETER": 60,
+    "INPUT": 34,
+    "DELIVERABLE": 30
+  },
+  "level_counts": {
+    "1": 8,
+    "2": 47,
+    "3": 254,
+    "4": 1532,
+    "5": 0
+  },
+  "checklist_items": 2,
+  "total_items": 1532
+}

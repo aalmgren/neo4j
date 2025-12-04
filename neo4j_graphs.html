@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Fixed Workflow + Dynamic Knowledge Network</title>
+    <title>Neo4j graphs</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
@@ -167,31 +167,36 @@
         </div>
         
         <div class="stats" id="stats">
-            <h4>Metrics</h4>
+            <h4>Metrics by Level</h4>
             <div class="stats-grid" id="stats-grid"></div>
-            <button class="control-button" onclick="zoomToFit()" style="margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px;">
-                Zoom to Fit
-            </button>
+            <h4 style="margin-top: 20px;">Metrics by Category</h4>
+            <div class="stats-grid" id="stats-category-grid"></div>
+            <div style="margin-top: 15px;">
+                <button class="control-button" onclick="toggleColorMode()" id="color-mode-btn" style="background: #FF9800;">
+                    Color by: Category
+                </button>
+                <button class="control-button" onclick="zoomToFit()" style="margin-left: 10px; background: #4CAF50;">
+                    Zoom to Fit
+                </button>
+            </div>
         </div>
     </div>
 
     <div class="tooltip" id="tooltip"></div>
 
     <script>
-        // Category color mapping (12 categories from JSON)
+        // Category color mapping
         const categoryColors = {
-            '🔧 ACTION': '#E91E63',           // Pink
-            '✅ VALIDATION': '#9C27B0',        // Purple
-            '📊 PARAMETER': '#3F51B5',         // Indigo
-            '💡 RATIONALE': '#2196F3',         // Blue
-            '⭐ BEST_PRACTICE': '#4CAF50',     // Green
-            '⚠️ WARNING': '#FF9800',           // Orange
-            '🔀 OPTION': '#FF5722',            // Deep Orange
-            '📝 DOCUMENTATION': '#795548',     // Brown
-            '🧮 FORMULA': '#607D8B',           // Blue Grey
-            '📦 DELIVERABLE': '#00BCD4',       // Cyan
-            '📥 INPUT': '#8BC34A',             // Light Green
-            '🎯 DECISION': '#FFC107'           // Amber
+            'ACTION': '#E91E63',           // Pink
+            'VALIDATION': '#9C27B0',        // Purple
+            'PARAMETER': '#3F51B5',         // Indigo
+            'RATIONALE': '#2196F3',         // Blue
+            'WARNING': '#FF9800',           // Orange
+            'DOCUMENTATION': '#795548',     // Brown
+            'FORMULA': '#607D8B',           // Blue Grey
+            'DELIVERABLE': '#00BCD4',       // Cyan
+            'INPUT': '#8BC34A',             // Light Green
+            'DECISION': '#FFC107'           // Amber
         };
         
         // Default colors by level (quando category não existe)
@@ -203,8 +208,52 @@
             5: '#E91E63'   // Pink
         };
         
+        // Color mode: 'category' or 'level'
+        let colorMode = 'category';
+        
         // Helper function to get color
-        const getNodeColor = (d, level) => categoryColors[d.category] || levelColors[level] || '#999999';
+        const getNodeColor = (d, level) => {
+            if (colorMode === 'category') {
+                return categoryColors[d.category] || levelColors[level] || '#999999';
+            } else {
+                return levelColors[level] || '#999999';
+            }
+        };
+        
+        // Toggle color mode function
+        function toggleColorMode() {
+            colorMode = colorMode === 'category' ? 'level' : 'category';
+            const btn = document.getElementById('color-mode-btn');
+            btn.textContent = `Color by: ${colorMode === 'category' ? 'Category' : 'Level'}`;
+            btn.style.background = colorMode === 'category' ? '#FF9800' : '#2196F3';
+            
+            // Update all node colors
+            if (workflowNodesSelection) {
+                workflowNodesSelection.selectAll('circle')
+                    .style("fill", d => getNodeColor(d, 1))
+                    .style("stroke", d => d3.color(getNodeColor(d, 1)).darker(1));
+            }
+            if (subStepNodesSelection) {
+                subStepNodesSelection.selectAll('circle')
+                    .style("fill", d => getNodeColor(d, 2))
+                    .style("stroke", d => d3.color(getNodeColor(d, 2)).darker(1));
+            }
+            if (knowledgeNodesSelection) {
+                knowledgeNodesSelection.selectAll('circle')
+                    .style("fill", d => getNodeColor(d, 3))
+                    .style("stroke", d => d3.color(getNodeColor(d, 3)).darker(1));
+            }
+            if (detailNodesSelection) {
+                detailNodesSelection.selectAll('circle')
+                    .style("fill", d => getNodeColor(d, 4))
+                    .style("stroke", d => d3.color(getNodeColor(d, 4)).darker(1));
+            }
+            if (subItemNodesSelection) {
+                subItemNodesSelection.selectAll('circle')
+                    .style("fill", d => getNodeColor(d, 5))
+                    .style("stroke", d => d3.color(getNodeColor(d, 5)).darker(1));
+            }
+        }
         
         // Configuração
         // Get dynamic dimensions - increased to accommodate all nodes
@@ -269,7 +318,7 @@
         // Função para carregar dados do JSON
         async function loadDataFromJSON() {
             try {
-                const response = await fetch('best_practices_structured.json');
+                const response = await fetch('estimation_workflow_structured.json');
                 const data = await response.json();
                 
                 // NÍVEL 1: Workflow (sections com level === 1 e que têm subsections)
@@ -438,7 +487,7 @@
                         workflowCounter++;
                 });
                 
-                console.log(`✅ Data loaded from JSON:`);
+                console.log(`Data loaded from JSON:`);
                 console.log(`   - Canvas: ${width}x${height}px`);
                 console.log(`   - Center: (${centerX}, ${centerY})`);
                 console.log(`   - Galaxy radius: ${galaxyRadius.toFixed(0)}px`);
@@ -1217,6 +1266,33 @@
             `;
             
             d3.select("#stats-grid").html(statsHtml);
+            
+            // Calculate category counts
+            const categoryCounts = {};
+            [...detailData, ...subItemData, ...knowledgeData].forEach(node => {
+                if (node.category) {
+                    categoryCounts[node.category] = (categoryCounts[node.category] || 0) + 1;
+                }
+            });
+            
+            // Sort by count (descending)
+            const sortedCategories = Object.entries(categoryCounts)
+                .sort((a, b) => b[1] - a[1]);
+            
+            // Helper function to remove emojis
+            const removeEmojisFromCategory = (category) => {
+                if (!category) return '';
+                return category.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]/gu, '').trim();
+            };
+            
+            const categoryStatsHtml = sortedCategories.map(([category, count]) => `
+                <div class="stat-item">
+                    <div class="stat-number">${count}</div>
+                    <div class="stat-label">${removeEmojisFromCategory(category)}</div>
+                </div>
+            `).join('');
+            
+            d3.select("#stats-category-grid").html(categoryStatsHtml || '<div class="stat-item">No categories found</div>');
         }
 
         // Zoom to fit all nodes
