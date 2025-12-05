@@ -1,6 +1,6 @@
 """
 Servidor HTTP simples para servir os arquivos localmente
-Acesse: http://localhost:8000/hybrid_workflow_knowledge.html
+Acesse: http://localhost:8000/neo4j_graphs.html 
 """
 import http.server
 import socketserver

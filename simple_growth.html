@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mineral Deposit Inference Workflow</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+        }
+        
+        html {
+            overflow-x: hidden; /* Prevent horizontal scroll */
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        
+        #graph-container {
+            width: 100%;
+            min-height: 600px;
+            height: calc(100vh - 200px); /* Responsive height based on viewport */
+            max-height: 900px; /* Maximum height for large monitors */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fafafa;
+            overflow: hidden; /* Prevent horizontal scroll */
+            position: relative;
+        }
+        
+        @media (max-width: 1366px) {
+            #graph-container {
+                height: calc(100vh - 150px);
+                min-height: 500px;
+            }
+        }
+        
+        @media (max-width: 1024px) {
+            #graph-container {
+                height: calc(100vh - 120px);
+                min-height: 450px;
+            }
+        }
+        
+        #graph {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            max-width: 300px;
+            z-index: 1000;
+        }
+        
+        .tooltip strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        
+        .score-label {
+            font-size: 11px;
+            fill: #666;
+            text-anchor: middle;
+            font-weight: bold;
+        }
+        
+        .column-title {
+            font-size: 12px;
+            font-weight: bold;
+            fill: #333;
+            text-anchor: start;
+            dominant-baseline: middle;
+        }
+        
+        .heuristic-badge {
+            font-size: 10px;
+            fill: #666;
+            font-style: italic;
+            text-anchor: middle;
+        }
+        
+        .intro-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .intro-box strong {
+            color: #1976D2;
+        }
+        
+        .column-line {
+            stroke: #ddd;
+            stroke-width: 1;
+            stroke-dasharray: 5,5;
+        }
+        
+        .node {
+            cursor: pointer;
+        }
+        
+        .node circle {
+            stroke: #333;
+            stroke-width: 2px;
+        }
+        
+        .node text {
+            font-size: 12px;
+            font-weight: bold;
+            fill: #333;
+            /* text-anchor e dominant-baseline controlados via JavaScript */
+            pointer-events: none;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .control-button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        
+        .control-button:hover {
+            background: #45a049;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .control-button:active {
+            transform: translateY(0);
+        }
+        
+        .control-button.pause {
+            background: #FF9800;
+        }
+        
+        .control-button.pause:hover {
+            background: #F57C00;
+        }
+        
+        .stats {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e8f5e8;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .stat-item {
+            display: inline-block;
+            margin-right: 20px;
+            padding: 8px 15px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2E7D32;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Heuristic Reasoning in MIneral Resources Estimation</h1>
+        <p style="color: #666; font-size: 14px; margin-top: -10px; margin-bottom: 20px;">
+            This visualization simulates the <strong>mental shortcuts</strong> that an experienced geologist uses to infer mineral deposit characteristics from assay data.
+            <br>The connections show heuristic associations (practical rules) based on experience, not exhaustive calculations.
+            <br><strong style="color: #d32f2f;">⚠️ Important:</strong> This is a <em>teaching tool</em> to illustrate reasoning patterns. Real geological interpretation requires comprehensive analysis, field observations, and considers exceptions. Scores represent <em>typical</em> associations, not certainties.
+        </p>
+        
+        <div id="graph-container">
+            <svg id="graph"></svg>
+        </div>
+        
+        <div class="controls">
+            <button class="control-button" id="start-btn" onclick="startAnimation()">
+                Start Growth
+            </button>
+            <button class="control-button pause" id="pause-btn" onclick="pauseAnimation()" style="display: none;">
+                Pause
+            </button>
+            <button class="control-button" onclick="resetAnimation()">
+                Reset
+            </button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number" id="visible-nodes">0</div>
+                <div class="stat-label">Visible Nodes</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="visible-links">0</div>
+                <div class="stat-label">Visible Links</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="current-level">-</div>
+                <div class="stat-label">Current Level</div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        const tooltip = d3.select("#tooltip");
+        // Global variables
+        let nodes = [];
+        let links = [];
+        let svg, simulation;
+        let nodeElements, linkElements, labelElements;
+        let isAnimating = false;
+        let animationSpeed = 500; // ms between node appearances
+        let visibleNodes = new Set();
+        let visibleLinks = new Set();
+        let currentLevel = -1;
+        
+        // Initialize SVG (responsive)
+        const container = document.getElementById('graph-container');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        svg = d3.select("#graph")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+        
+        // Global column data
+        let columns = [];
+        
+        // Load data from JSON
+        async function loadData() {
+            try {
+                const response = await fetch('simple_growth_graph.json');
+                const data = await response.json();
+                
+                columns = data.columns;
+                
+                // Process all nodes from columns - HORIZONTAL LAYOUT (left to right)
+                nodes = [];
+                columns.forEach((col, colIndex) => {
+                    // Calculate horizontal position: columns from LEFT to right
+                    const numCols = columns.length;
+                    const colWidth = width / (numCols + 1);
+                    const x = colWidth * (colIndex + 1);
+                    
+                    // Within column: distribute vertically, sorted by score (highest first)
+                    const sortedNodes = [...col.nodes].sort((a, b) => (b.score || 0) - (a.score || 0));
+                    
+                    col.nodes.forEach((node, nodeIndex) => {
+                        const nodePosition = sortedNodes.findIndex(n => n.id === node.id);
+                        const totalInCol = col.nodes.length;
+                        const usableHeight = height * 0.65; // Use 65% of height for nodes (leave 35% for questions at bottom)
+                        const startY = height * 0.05; // Start 5% from top
+                        const spacing = usableHeight / (totalInCol + 1);
+                        const y = startY + spacing * (nodePosition + 1);
+                        
+                        nodes.push({
+                            ...node,
+                            columnId: col.id,
+                            columnIndex: colIndex,
+                            columnTitle: col.title,
+                            level: col.level,
+                            x: x,
+                            y: y,
+                            fx: x,
+                            fy: y
+                        });
+                    });
+                });
+                
+                // Process links - include score, reasoning, and linkType
+                links = data.links.map(d => {
+                    const sourceNode = nodes.find(n => n.id === d.source);
+                    const targetNode = nodes.find(n => n.id === d.target);
+                    return {
+                        source: sourceNode,
+                        target: targetNode,
+                        score: d.score || 0.5,
+                        reasoning: d.reasoning || '',
+                        linkType: d.linkType || 'heuristic' // Default to heuristic if not specified
+                    };
+                });
+                
+                // Initialize simulation FIRST (needed for node positioning)
+                setupSimulation();
+                
+                // Draw initial graph (all hidden) - MUST be done after nodes are created
+                drawGraph();
+                
+                // Force initial positioning
+                simulation.tick();
+                ticked();
+                
+                // Update positions immediately after drawing
+                ticked();
+                
+                // Start animation automatically
+                setTimeout(() => {
+                    startAnimation();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error loading JSON:', error);
+            }
+        }
+        
+        // Setup force simulation - fixed positions (no physics needed)
+        function setupSimulation() {
+            // No simulation needed - positions are fixed
+            // But we'll use it to trigger the tick function
+            simulation = d3.forceSimulation(nodes)
+                .force("x", d3.forceX(d => d.fx || d.x).strength(1))
+                .force("y", d3.forceY(d => d.fy || d.y).strength(1))
+                .alphaDecay(0)
+                .velocityDecay(0);
+            
+            simulation.on("tick", ticked);
+            // Run a few ticks to ensure positions are set
+            simulation.tick();
+            simulation.tick();
+            simulation.tick();
+            simulation.stop(); // Stop after initial positioning
+        }
+        
+        // Get link color based on linkType and score
+        function getLinkColor(linkType, score) {
+            if (linkType === 'action') {
+                // Actions are always blue (no strong/moderate distinction)
+                return "#0000FF";  // Blue
+            } else {
+                // Heuristics: only strong (red) or weak (gray)
+                // Strong = highest score in the column, Weak = all others
+                if (score > 0.7) {
+                    return "#FF0000";  // Red - strong heuristic
+                } else {
+                    return "#808080";  // Gray - weak heuristic
+                }
+            }
+        }
+        
+        // Get link width - actions have fixed width, heuristics based on score
+        function getLinkWidth(linkType, score) {
+            if (linkType === 'action') {
+                return 2;  // Fixed width for actions (no score-based variation)
+            }
+            return 2 + (score * 4);  // 2-6px width based on score for heuristics
+        }
+        
+        // Helper: Safe setTimeout with isAnimating check
+        function safeTimeout(callback, delay) {
+            setTimeout(() => {
+                if (!isAnimating) return;
+                callback();
+            }, delay);
+        }
+        
+        // Helper: Standard transition animation
+        function animateTransition(selection, duration = 400, delay = 0) {
+            return selection.transition().duration(duration).delay(delay);
+        }
+        
+        // Helper: Show element with fade-in animation
+        function showElement(selection, opacity = 1, duration = 400, delay = 0) {
+            return animateTransition(selection, duration, delay).style("opacity", opacity);
+        }
+        
+        // Helper: Get node position (fx/fy or x/y)
+        function getNodePos(node) {
+            return {
+                x: node.fx !== undefined ? node.fx : (node.x !== undefined ? node.x : 0),
+                y: node.fy !== undefined ? node.fy : (node.y !== undefined ? node.y : 0)
+            };
+        }
+        
+        // Helper: Create styled text element
+        function createTextElement(parent, text, className, styles = {}) {
+            const defaultStyles = {
+                opacity: 0,
+                fontSize: "12px",
+                fill: "#555",
+                fontStyle: "italic",
+                fontWeight: "normal"
+            };
+            const finalStyles = { ...defaultStyles, ...styles };
+            
+            return parent.append("text")
+                .attr("class", className)
+                .text(text)
+                .style("opacity", finalStyles.opacity)
+                .style("font-size", finalStyles.fontSize)
+                .style("fill", finalStyles.fill)
+                .style("font-style", finalStyles.fontStyle)
+                .style("font-weight", finalStyles.fontWeight);
+        }
+        
+        // Helper: Animate link appearance with drawing effect
+        function animateLink(linkGroup, linkData) {
+            const path = linkGroup.select("path");
+            const pathNode = path.node();
+            
+            if (!pathNode) return; // Safety check
+            
+            // Get path length for dash animation (force a tick to ensure path is rendered)
+            const pathLength = pathNode.getTotalLength() || 100; // Fallback to 100 if length is 0
+            
+            // Set up dash array: full length dash, full length gap (initially invisible)
+            path
+                .attr("stroke-dasharray", pathLength + " " + pathLength)
+                .attr("stroke-dashoffset", pathLength) // Start with path fully offset (invisible)
+                .style("stroke-opacity", 0.8);
+            
+            // Animate drawing: move dashoffset from pathLength to 0 (draws the line)
+            path.transition()
+                .duration(1000) // 1 second to draw
+                .ease(d3.easeLinear) // Linear for smooth drawing
+                .attr("stroke-dashoffset", 0);
+            
+            // Show score label after link is drawn (only for heuristics)
+            linkGroup.select("text")
+                .call(showElement, linkData.linkType === 'action' ? 0 : 1, 400, 1000); // Delay until after drawing
+        }
+        
+        // Helper: Wrap text to prevent overlap
+        function wrapText(text, width) {
+            text.each(function() {
+                const text = d3.select(this);
+                const words = text.text().split(/\s+/).reverse();
+                const textAnchor = text.attr("text-anchor") || "start";
+                const x = text.attr("x");
+                let word;
+                let line = [];
+                let lineNumber = 0;
+                const lineHeight = 1.1; // ems
+                const y = text.attr("y");
+                const dy = parseFloat(text.attr("dy")) || 0;
+                let tspan = text.text(null)
+                    .append("tspan")
+                    .attr("x", x)
+                    .attr("y", y)
+                    .attr("text-anchor", textAnchor)
+                    .attr("dy", dy + "em");
+                
+                while (word = words.pop()) {
+                    line.push(word);
+                    tspan.text(line.join(" "));
+                    if (tspan.node().getComputedTextLength() > width) {
+                        line.pop();
+                        tspan.text(line.join(" "));
+                        line = [word];
+                        tspan = text.append("tspan")
+                            .attr("x", x)
+                            .attr("y", y)
+                            .attr("text-anchor", textAnchor)
+                            .attr("dy", ++lineNumber * lineHeight + dy + "em")
+                            .text(word);
+                    }
+                }
+            });
+        }
+        
+        // Helper: Fade nodes to gray (except highest score and action nodes)
+        function fadeLowerScoreNodes(column, columnIndex) {
+            if (column.nodes.length <= 1) return; // No need to fade if only one node
+            
+            // Find node with highest score
+            const sortedNodes = [...column.nodes].sort((a, b) => (b.score || 0) - (a.score || 0));
+            const highestScoreNode = sortedNodes[0];
+            
+            // Fade all other nodes to gray (except action nodes)
+            column.nodes.forEach(node => {
+                // Skip if it's the highest score node OR if it's an action node
+                if (node.id !== highestScoreNode.id && node.type !== 'action') {
+                    const nodeElement = nodeElements.filter(d => d.id === node.id);
+                    
+                    // Fade circle to gray
+                    nodeElement.select("circle")
+                        .transition()
+                        .duration(800)
+                        .style("fill", "#CCCCCC")  // Light gray
+                        .style("opacity", 0.5);  // Reduce opacity
+                    
+                    // Fade text to gray
+                    nodeElement.selectAll("text")
+                        .filter(function() {
+                            const classAttr = d3.select(this).attr("class");
+                            return classAttr !== "column-title" && classAttr !== "elements-text";
+                        })
+                        .transition()
+                        .duration(800)
+                        .style("fill", "#999999")  // Darker gray for text
+                        .style("opacity", 0.6);
+                    
+                    // Fade incoming links to gray (only heuristic links, not action links)
+                    const incomingLinks = links.filter(link => 
+                        link.target.id === node.id && link.linkType !== 'action'
+                    );
+                    incomingLinks.forEach(link => {
+                        const linkKey = `${link.source.id}-${link.target.id}`;
+                        const linkGroup = linkElements.filter(d => 
+                            d.source.id === link.source.id && d.target.id === link.target.id
+                        );
+                        linkGroup.select("path")
+                            .transition()
+                            .duration(800)
+                            .style("stroke", "#CCCCCC")
+                            .style("stroke-opacity", 0.3);
+                    });
+                }
+            });
+        }
+        
+        // Helper: Animate node appearance
+        function animateNode(nodeElement, nodeData) {
+            nodeElement.select("circle")
+                .call(animateTransition, 400, 0)
+                .ease(d3.easeElasticOut)
+                .attr("r", nodeData.level === 0 ? 15 : 12)
+                .style("opacity", 1);
+            
+            nodeElement.selectAll("text")
+                .filter(function() {
+                    const classAttr = d3.select(this).attr("class");
+                    return classAttr !== "column-title" && classAttr !== "elements-text";
+                })
+                .filter((d, i) => i === 0)
+                .call(showElement, 1, 400, 200);
+        }
+        
+        // Draw graph elements
+        function drawGraph() {
+            // Create container group
+            const g = svg.append("g").attr("id", "main-group");
+            
+            // Draw user instruction indicator at top center (responsive)
+            const instructionGroup = svg.append("g").attr("id", "instruction-group");
+            const instructionX = width / 2;
+            const instructionY = 25;
+            const instructionText = "Hover the mouse over the nodes and connections";
+            const fontSize = width > 600 ? "18px" : "16px"; // Increased font size
+            const textWidth = instructionText.length * 8.5; // Approximate text width (adjusted for larger font)
+            const instructionBoxWidth = Math.min(textWidth + 60, width * 0.9); // Increased padding (was 40, now 60)
+            
+            // Instruction background
+            instructionGroup.append("rect")
+                .attr("x", instructionX - instructionBoxWidth / 2)
+                .attr("y", instructionY - 18) // Increased height offset
+                .attr("width", instructionBoxWidth)
+                .attr("height", 36) // Increased height (was 30, now 36)
+                .attr("rx", 15)
+                .style("fill", "rgba(255, 255, 255, 0.9)")
+                .style("stroke", "#333")
+                .style("stroke-width", 1)
+                .style("opacity", 0.95);
+            
+            // Instruction text
+            instructionGroup.append("text")
+                .attr("x", instructionX)
+                .attr("y", instructionY)
+                .text(instructionText)
+                .style("font-size", fontSize) // Increased font size
+                .style("font-weight", "bold")
+                .style("fill", "#333")
+                .style("text-anchor", "middle")
+                .style("pointer-events", "none");
+            
+            // Draw fixed legend in top-right corner (responsive positioning)
+            const legendGroup = svg.append("g").attr("id", "legend-group");
+            const legendWidth = 200;
+            const legendHeight = 140;
+            // Ensure legend doesn't go off screen - responsive positioning
+            const legendX = Math.max(width - legendWidth - 10, 10); // At least 10px from right edge, minimum 10px from left
+            const legendY = 20;
+            
+            // Legend background
+            legendGroup.append("rect")
+                .attr("x", legendX)
+                .attr("y", legendY)
+                .attr("width", legendWidth)
+                .attr("height", legendHeight)
+                .attr("rx", 5)
+                .style("fill", "white")
+                .style("stroke", "#333")
+                .style("stroke-width", 2)
+                .style("opacity", 0.95);
+            
+            // Legend title
+            legendGroup.append("text")
+                .attr("x", legendX + 10)
+                .attr("y", legendY + 20)
+                .text("Connection Types")
+                .style("font-size", width > 800 ? "14px" : "12px") // Responsive font size
+                .style("font-weight", "bold")
+                .style("fill", "#333");
+            
+            // Legend items
+            const legendItems = [
+                { color: "#FF0000", label: "Heuristic/Reasoning (Strong)" },
+                { color: "#808080", label: "Heuristic/Reasoning (Weak)" },
+                { color: "#0000FF", label: "Action" }
+            ];
+            
+            legendItems.forEach((item, idx) => {
+                const itemY = legendY + 40 + (idx * 20);
+                
+                // Color line
+                legendGroup.append("line")
+                    .attr("x1", legendX + 10)
+                    .attr("y1", itemY)
+                    .attr("x2", legendX + 40)
+                    .attr("y2", itemY)
+                    .style("stroke", item.color)
+                    .style("stroke-width", 3);
+                
+                // Label
+                legendGroup.append("text")
+                    .attr("x", legendX + 45)
+                    .attr("y", itemY + 4)
+                    .text(item.label)
+                    .style("font-size", width > 800 ? "11px" : "9px") // Responsive font size
+                    .style("fill", "#333");
+            });
+            
+            // Column titles will be drawn near nodes, not as headers
+            
+            // Draw links (initially hidden) with score-based colors
+            linkElements = g.append("g")
+                .attr("class", "links")
+                .selectAll("g")
+                .data(links)
+                .enter().append("g")
+                .attr("class", "link-group");
+            
+            // Curved path (S-shaped curve like roots)
+            linkElements.append("path")
+                .attr("class", "link")
+                .attr("d", d => {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Create S-shaped curve (sigmoid) like roots
+                    const startX = d.source.x;
+                    const startY = d.source.y;
+                    const endX = d.target.x;
+                    const endY = d.target.y;
+                    
+                    // Calculate angle and perpendicular
+                    const angle = Math.atan2(dy, dx);
+                    const perpAngle = angle + Math.PI / 2; // Perpendicular angle
+                    
+                    // Curve intensity - adaptive based on distance
+                    const curveIntensity = Math.min(distance * 0.3, 50);
+                    
+                    // First control point (near start) - curves in one direction
+                    const cp1X = startX + Math.cos(angle) * (distance * 0.3) + Math.cos(perpAngle) * curveIntensity;
+                    const cp1Y = startY + Math.sin(angle) * (distance * 0.3) + Math.sin(perpAngle) * curveIntensity;
+                    
+                    // Second control point (near end) - curves in opposite direction (creates S shape)
+                    const cp2X = endX - Math.cos(angle) * (distance * 0.3) - Math.cos(perpAngle) * curveIntensity;
+                    const cp2Y = endY - Math.sin(angle) * (distance * 0.3) - Math.sin(perpAngle) * curveIntensity;
+                    
+                    // Cubic Bezier curve (C) creates smooth S-shape
+                    return `M${startX},${startY}C${cp1X},${cp1Y} ${cp2X},${cp2Y} ${endX},${endY}`;
+                })
+                .style("fill", "none")
+                .style("stroke", d => getLinkColor(d.linkType, d.score))
+                .style("stroke-opacity", 0)
+                .style("stroke-width", d => getLinkWidth(d.linkType, d.score))
+                .attr("stroke-dasharray", "0") // Initialize dash array (will be set during animation)
+                .attr("stroke-dashoffset", "0") // Initialize dash offset
+                .on("mouseover", function(event, d) {
+                    const isAction = d.linkType === 'action';
+                    const linkTypeLabel = isAction ? 'Action (Executable)' : 'Heuristic (Mental Shortcut)';
+                    const linkTypeColor = isAction ? '#2196F3' : '#FF0000';
+                    
+                    let tooltipContent = `
+                        <strong style="color: ${linkTypeColor};">${linkTypeLabel}</strong>`;
+                    
+                    // Only show score for heuristics, not actions
+                    if (!isAction) {
+                        const scoreCategory = d.score > 0.7 ? 'Strong' : d.score > 0.4 ? 'Moderate' : 'Weak';
+                        tooltipContent += `
+                            <div style="margin-top: 5px; font-size: 11px; color: #888;">
+                                Association Strength: ${scoreCategory} (${(d.score * 100).toFixed(0)}%)
+                            </div>`;
+                    }
+                    
+                    tooltipContent += `
+                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #444;">
+                                ${d.reasoning || ''}
+                            </div>
+                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #444; font-size: 10px; color: #999; font-style: italic;">
+                                ${isAction ? 'Remember: This action can be executed automatically in the workflow' : 'Remember: Context and exceptions always matter in geology'}
+                            </div>
+                        `;
+                    
+                    tooltip.style("opacity", 1)
+                        .html(tooltipContent)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                });
+            
+            // Score label on link (only for heuristics, not actions)
+            linkElements.append("text")
+                .attr("class", "score-label")
+                .text(d => d.linkType === 'action' ? '' : (d.score * 100).toFixed(0) + "%")
+                .style("opacity", 0)
+                .style("fill", d => getLinkColor(d.linkType, d.score));
+            
+            // Draw nodes (initially hidden)
+            nodeElements = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("g")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "node");
+            
+            // Draw node shape - circles for all nodes (smaller size)
+            nodeElements.append("circle")
+                .attr("r", d => {
+                    if (!d) return 12;
+                    if (d.level === 0) return 15;  // Smaller for input file
+                    return 12;  // Smaller regular nodes
+                })
+                .style("fill", d => {
+                    if (!d) return "#2196F3";
+                    if (d.type === "input") return "#4CAF50";  // Green for input
+                    if (d.type === "deposit") return "#2196F3";  // Blue for deposits
+                    if (d.type === "characteristic") return "#FF9800";  // Orange for characteristics
+                    if (d.type === "action") return "#9C27B0";  // Purple for actions
+                    return "#2196F3";  // Default blue
+                })
+                .style("opacity", 0)
+                .style("stroke", "#333")
+                .style("stroke-width", 2);
+            
+            // Draw labels - to the right of circles (horizontally aligned) with word wrap
+            labelElements = nodeElements.append("text")
+                .text(d => d && d.name ? d.name : "")
+                .style("opacity", 0)
+                .style("font-size", d => d && d.level === 0 ? "14px" : "13px")
+                .style("font-weight", "bold")
+                .attr("x", d => {
+                    if (!d) return 0;
+                    const radius = d.level === 0 ? 15 : 12;
+                    return radius + 10;  // 10px spacing from circle edge
+                })
+                .attr("y", 0)  // Align vertically with circle center (y=0 is center of node group)
+                .attr("dy", "0.35em")  // Fine-tune vertical alignment
+                .attr("text-anchor", "start")  // Text starts at x position (to the right of circle)
+                .attr("dominant-baseline", "middle")  // Center text vertically on y=0
+                .call(wrapText, 120);  // Word wrap with max width of 120px
+            
+            // Draw column titles - positioned to the LEFT of columns
+            if (columns && columns.length > 0) {
+                columns.forEach((col, colIndex) => {
+                    if (col.level > 0) { // Only show for columns after level 0
+                        // Calculate position
+                        const numCols = columns.length;
+                        const colWidth = width / (numCols + 1);
+                        
+                        // All questions: positioned at bottom, shifted 1 level to the left
+                        // titleX = position of previous column (colIndex, not colIndex + 1)
+                        // titleY = bottom of the graph, but with enough space for 2 lines of text
+                        const titleX = colWidth * colIndex;  // 1 level to the left (previous column position)
+                        // For first question (colIndex === 0), position it lower and use larger font
+                        const isFirstQuestion = colIndex === 0;
+                        const titleY = isFirstQuestion ? height * 0.75 + 40 : height * 0.75 + 20;  // First question lower
+                        
+                        // Create title as separate group, not attached to nodes
+                        const titleGroup = g.append("g")
+                            .attr("class", "column-title-group")
+                            .attr("data-column-index", colIndex);
+                        
+                        if (col && col.title) {
+                            const titleText = titleGroup.append("text")
+                                .attr("class", "column-title")
+                                .text(col.title)
+                                .style("opacity", 0)
+                                .style("font-size", isFirstQuestion ? "13px" : "24px")  // First question same size as "Identifying columns..."
+                                .style("font-style", "italic")
+                                .style("fill", "#555")
+                                .style("font-weight", "normal")
+                                .attr("x", titleX)
+                                .attr("y", titleY)
+                                .attr("text-anchor", "middle")
+                                .attr("dy", "0.35em");
+                            
+                            // Apply word wrap to prevent overlapping (max width based on column width)
+                            setTimeout(() => {
+                                const colWidth = width / (columns.length + 1);
+                                const maxWidth = isFirstQuestion ? colWidth * 0.9 : colWidth * 0.85; // First question can be wider
+                                wrapText(titleText, maxWidth);
+                            }, 100);
+                        }
+                    }
+                });
+            }
+            
+            // Draw "Identifying columns..." text BELOW assay.csv node with word wrap
+            nodeElements.filter(d => d.id === "assay_csv" && d.elements)
+                .each(function(d) {
+                    const nodeGroup = d3.select(this);
+                    const elementsText = "Identifying columns... " + d.elements.join(", ");
+                    const textElement = nodeGroup.append("text")
+                        .attr("class", "elements-text")
+                        .text(elementsText)
+                        .style("opacity", 0)
+                        .style("font-size", "13px")
+                        .style("fill", "#555")
+                        .style("font-style", "italic")
+                        .attr("x", 0)  // Centered below the circle (relative to node group)
+                        .attr("y", 40)  // Moved further down (was 25, now 40)
+                        .attr("text-anchor", "middle")
+                        .attr("dy", "0.35em");
+                    
+                    // Apply word wrap to split into 2 lines
+                    setTimeout(() => {
+                        const maxWidth = 200; // Max width for text before wrapping
+                        wrapText(textElement, maxWidth);
+                    }, 100);
+                });
+            
+            // Add tooltip on nodes
+            nodeElements.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.name}</strong>
+                        <div style="margin-top: 5px;">${d.description || ''}</div>
+                        ${d.score ? `<div style="margin-top: 5px; font-size: 11px; color: #888;">Score: ${(d.score * 100).toFixed(0)}%</div>` : ''}
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+                    
+                d3.select(this).select("circle")
+                    .transition()
+                    .duration(200)
+                    .attr("r", d => d.level === 0 ? 18 : 15);
+            })
+            .on("mouseout", function(event, d) {
+                tooltip.style("opacity", 0);
+                d3.select(this).select("circle")
+                    .transition()
+                    .duration(200)
+                    .attr("r", d => d.level === 0 ? 15 : 12);
+            });
+            
+        }
+        
+        // Update positions on simulation tick
+        function ticked() {
+            if (!nodeElements || !linkElements) return;
+            
+            // Update node positions - ensure they use fx/fy if available, otherwise x/y
+            nodeElements.attr("transform", d => {
+                const pos = getNodePos(d);
+                return `translate(${pos.x},${pos.y})`;
+            });
+            
+            // Update curved paths (S-shaped curves like roots)
+            linkElements.select("path")
+                .attr("d", d => {
+                    const sourcePos = getNodePos(d.source);
+                    const targetPos = getNodePos(d.target);
+                    const sourceX = sourcePos.x;
+                    const sourceY = sourcePos.y;
+                    const targetX = targetPos.x;
+                    const targetY = targetPos.y;
+                    
+                    const dx = targetX - sourceX;
+                    const dy = targetY - sourceY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Create S-shaped curve (sigmoid) like roots
+                    const angle = Math.atan2(dy, dx);
+                    const perpAngle = angle + Math.PI / 2; // Perpendicular angle
+                    
+                    // Curve intensity - adaptive based on distance
+                    const curveIntensity = Math.min(distance * 0.3, 50);
+                    
+                    // First control point (near start) - curves in one direction
+                    const cp1X = sourceX + Math.cos(angle) * (distance * 0.3) + Math.cos(perpAngle) * curveIntensity;
+                    const cp1Y = sourceY + Math.sin(angle) * (distance * 0.3) + Math.sin(perpAngle) * curveIntensity;
+                    
+                    // Second control point (near end) - curves in opposite direction (creates S shape)
+                    const cp2X = targetX - Math.cos(angle) * (distance * 0.3) - Math.cos(perpAngle) * curveIntensity;
+                    const cp2Y = targetY - Math.sin(angle) * (distance * 0.3) - Math.sin(perpAngle) * curveIntensity;
+                    
+                    // Cubic Bezier curve (C) creates smooth S-shape
+                    return `M${sourceX},${sourceY}C${cp1X},${cp1Y} ${cp2X},${cp2Y} ${targetX},${targetY}`;
+                });
+            
+            // Position score label at midpoint of link (only show for heuristics)
+            linkElements.select("text")
+                .style("opacity", d => {
+                    // Only show score for heuristics, not actions
+                    if (d.linkType === 'action') return 0;
+                    // For heuristics, show if link is visible (check if it's in visibleLinks set)
+                    const linkKey = `${d.source.id}-${d.target.id}`;
+                    return visibleLinks.has(linkKey) ? 1 : 0;
+                })
+                .attr("x", d => {
+                    const sourceX = d.source.fx !== undefined ? d.source.fx : (d.source.x !== undefined ? d.source.x : 0);
+                    const targetX = d.target.fx !== undefined ? d.target.fx : (d.target.x !== undefined ? d.target.x : 0);
+                    return (sourceX + targetX) / 2;
+                })
+                .attr("y", d => {
+                    const sourceY = d.source.fy !== undefined ? d.source.fy : (d.source.y !== undefined ? d.source.y : 0);
+                    const targetY = d.target.fy !== undefined ? d.target.fy : (d.target.y !== undefined ? d.target.y : 0);
+                    return (sourceY + targetY) / 2 - 5;
+                });
+        }
+        
+        // Start growth animation
+        function startAnimation() {
+            if (isAnimating) return;
+            
+            isAnimating = true;
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+            
+            // Start from first column
+            animateColumn(0);
+        }
+        
+        // Pause animation
+        function pauseAnimation() {
+            isAnimating = false;
+            document.getElementById('start-btn').style.display = 'inline-block';
+            document.getElementById('pause-btn').style.display = 'none';
+        }
+        
+        // Reset animation
+        function resetAnimation() {
+            isAnimating = false;
+            visibleNodes.clear();
+            visibleLinks.clear();
+            currentLevel = -1;
+            
+            // Hide all nodes and links
+            nodeElements.selectAll("circle")
+                .style("opacity", 0)
+                .attr("r", d => d.level === 0 ? 0 : 0);
+            
+            labelElements.style("opacity", 0);
+            
+            linkElements.select("path").style("stroke-opacity", 0);
+            linkElements.select("text").style("opacity", 0);
+            
+            // Hide column titles
+            svg.selectAll(".column-title-group").selectAll(".column-title").style("opacity", 0);
+            
+            document.getElementById('start-btn').style.display = 'inline-block';
+            document.getElementById('pause-btn').style.display = 'none';
+            updateStats();
+        }
+        
+        // Helper function to show nodes in a column
+        function showColumnNodes(column, columnIndex, initialDelay) {
+            // Get nodes in this column, sorted by score (LOWEST first - worst to best)
+            const columnNodes = [...column.nodes].sort((a, b) => (a.score || 0) - (b.score || 0));
+            
+            // Show nodes one by one (worst score first, progressing to best)
+            columnNodes.forEach((node, index) => {
+                setTimeout(() => {
+                    if (!isAnimating) return;
+                    
+                    const nodeData = nodes.find(n => n.id === node.id);
+                    if (!nodeData) return;
+                    
+                    // Find the link TO this node (incoming connection)
+                    const incomingLink = links.find(link => link.target.id === node.id);
+                    
+                    // First, show the connection (if it exists)
+                    if (incomingLink) {
+                        const sourceId = incomingLink.source.id;
+                        const targetId = incomingLink.target.id;
+                        
+                        // Make sure source node is visible
+                        if (!visibleNodes.has(sourceId)) {
+                            visibleNodes.add(sourceId);
+                        }
+                        
+                        visibleLinks.add(`${sourceId}-${targetId}`);
+                        
+                        const linkGroup = linkElements.filter(d => {
+                            return d.source.id === sourceId && d.target.id === targetId;
+                        });
+                        
+                        // Animate connection appearance with drawing effect
+                        animateLink(linkGroup, incomingLink);
+                    }
+                    
+                    // Then, show the node (after a short delay)
+                    setTimeout(() => {
+                        if (!isAnimating) return;
+                        
+                        visibleNodes.add(node.id);
+                        const nodeElement = nodeElements.filter(d => d.id === node.id);
+                        
+                        // Animate node appearance
+                        nodeElement.select("circle")
+                            .transition()
+                            .duration(400)
+                            .ease(d3.easeElasticOut)
+                            .attr("r", d => d.level === 0 ? 15 : 12)
+                            .style("opacity", 1);
+                        
+                        // Show node name (skip column title and elements text)
+                        nodeElement.selectAll("text")
+                            .filter(function() {
+                                const classAttr = d3.select(this).attr("class");
+                                return classAttr !== "column-title" && classAttr !== "elements-text";
+                            })
+                            .filter((d, i) => i === 0) // First non-title text
+                            .transition()
+                            .duration(400)
+                            .delay(200)
+                            .style("opacity", 1);
+                        
+                        // Column title is already shown before nodes start appearing
+                        
+                        // Chemical elements for assay_csv are shown separately with 1 second delay
+                        // (handled in animateColumn function for level 0)
+                        
+                        updateStats();
+                    }, 300); // Small delay between connection and node
+                    
+                }, initialDelay + index * animationSpeed);
+            });
+            
+            // Show column title at bottom AFTER all nodes are shown (only for columns after level 0)
+            const showTitleDelay = initialDelay + columnNodes.length * animationSpeed + 1200;
+            
+            if (column.level > 0) {
+                safeTimeout(() => {
+                    // Show the title for this column (positioned at bottom, centered with column)
+                    showElement(
+                        svg.select(`g.column-title-group[data-column-index="${columnIndex}"]`).selectAll(".column-title"),
+                        0.8
+                    );
+                    
+                    // After title appears completely (400ms transition + 1000ms wait), move to next column
+                    setTimeout(() => {
+                        if (isAnimating) {
+                            animateColumn(columnIndex + 1);
+                        }
+                    }, 400 + 1000); // 400ms for transition + 1000ms wait = 1 second after title appears
+                }, showTitleDelay);
+            } else {
+                // Level 0: move to next column after nodes are shown
+                setTimeout(() => {
+                    if (isAnimating) {
+                        animateColumn(columnIndex + 1);
+                    }
+                }, showTitleDelay);
+            }
+        }
+        
+        // Animate by column (growing left to right)
+        function animateColumn(columnIndex) {
+            if (!isAnimating) return;
+            
+            if (columnIndex >= columns.length) {
+                // Animation complete
+                isAnimating = false;
+                document.getElementById('start-btn').style.display = 'inline-block';
+                document.getElementById('start-btn').textContent = 'Restart Growth';
+                document.getElementById('pause-btn').style.display = 'none';
+                return;
+            }
+            
+            // Start from first column (left) and go right
+            const column = columns[columnIndex];
+            currentLevel = column.level;
+            updateStats();
+            
+            // For level 0 (first column), show nodes immediately
+            // For other levels, show nodes first, then title at the bottom
+            if (column.level === 0) {
+                // Level 0: show nodes immediately (no title)
+                showColumnNodes(column, columnIndex, 0);
+                
+                // Show chemical elements 1 second after assay.csv node appears
+                // The node appears at: initialDelay (0) + index (0) * animationSpeed + 300ms (delay for node)
+                // So we add 1000ms (1 second) after that
+                const nodeAppearTime = 0 + 0 * animationSpeed + 300;
+                safeTimeout(() => {
+                    const assayNode = nodes.find(n => n.id === "assay_csv");
+                    if (assayNode && assayNode.elements) {
+                        showElement(
+                            nodeElements.filter(d => d.id === "assay_csv").select(".elements-text")
+                        );
+                        
+                        // After "Identifying columns..." appears, show the first question
+                        safeTimeout(() => {
+                            showElement(
+                                svg.select(`g.column-title-group[data-column-index="0"]`).selectAll(".column-title"),
+                                0.8
+                            );
+                            safeTimeout(() => {
+                                if (columns.length > 1) animateColumn(1);
+                            }, 400 + 1000);
+                        }, 500);
+                    }
+                }, nodeAppearTime + 1000); // 1 second after node appears
+            } else {
+                // Other levels: for column 1, question is already shown in level 0 animation
+                // For other columns, show question first, then nodes
+                if (columnIndex === 0) {
+                    // Column 1: question is already shown in level 0 animation, just show nodes
+                    safeTimeout(() => showColumnNodes(column, columnIndex, 0), 100);
+                } else {
+                    // Other columns: show question first, then nodes
+                    safeTimeout(() => {
+                        showElement(
+                            svg.select(`g.column-title-group[data-column-index="${columnIndex}"]`).selectAll(".column-title"),
+                            0.8
+                        );
+                        
+                        safeTimeout(() => {
+                            showColumnNodes(column, columnIndex, 0);
+                        }, 400 + 1000);
+                    }, 300);
+                }
+            }
+        }
+        
+        // Helper function to show nodes in a column
+        function showColumnNodes(column, columnIndex, initialDelay) {
+            // Get nodes in this column, sorted by score (LOWEST first - worst to best)
+            const columnNodes = [...column.nodes].sort((a, b) => (a.score || 0) - (b.score || 0));
+            
+            // Show nodes one by one (worst score first, progressing to best)
+            columnNodes.forEach((node, index) => {
+                setTimeout(() => {
+                    if (!isAnimating) return;
+                    
+                    const nodeData = nodes.find(n => n.id === node.id);
+                    if (!nodeData) return;
+                    
+                    // Find the link TO this node (incoming connection)
+                    const incomingLink = links.find(link => link.target.id === node.id);
+                    
+                    // First, show the connection (if it exists)
+                    if (incomingLink) {
+                        const sourceId = incomingLink.source.id;
+                        const targetId = incomingLink.target.id;
+                        
+                        // Make sure source node is visible
+                        if (!visibleNodes.has(sourceId)) {
+                            visibleNodes.add(sourceId);
+                        }
+                        
+                        visibleLinks.add(`${sourceId}-${targetId}`);
+                        
+                        const linkGroup = linkElements.filter(d => {
+                            return d.source.id === sourceId && d.target.id === targetId;
+                        });
+                        
+                        // Animate connection appearance with drawing effect
+                        animateLink(linkGroup, incomingLink);
+                    }
+                    
+                    // Then, show the node (after a short delay)
+                    setTimeout(() => {
+                        if (!isAnimating) return;
+                        
+                        visibleNodes.add(node.id);
+                        const nodeElement = nodeElements.filter(d => d.id === node.id);
+                        
+                        // Animate node appearance
+                        nodeElement.select("circle")
+                            .transition()
+                            .duration(400)
+                            .ease(d3.easeElasticOut)
+                            .attr("r", d => d.level === 0 ? 15 : 12)
+                            .style("opacity", 1);
+                        
+                        // Show node name (skip column title and elements text)
+                        nodeElement.selectAll("text")
+                            .filter(function() {
+                                const classAttr = d3.select(this).attr("class");
+                                return classAttr !== "column-title" && classAttr !== "elements-text";
+                            })
+                            .filter((d, i) => i === 0) // First non-title text
+                            .transition()
+                            .duration(400)
+                            .delay(200)
+                            .style("opacity", 1);
+                        
+                        // Column title is already shown before nodes start appearing
+                        
+                        // Chemical elements for assay_csv are shown separately with 1 second delay
+                        // (handled in animateColumn function for level 0)
+                        
+                        updateStats();
+                    }, 300); // Small delay between connection and node
+                    
+                }, initialDelay + index * animationSpeed);
+            });
+            
+            // After all nodes appear AND the highest score node is fully visible, fade lower score nodes to gray
+            // Highest score node appears last (since we sort from lowest to highest)
+            // Wait for: all nodes animation + connection drawing (1000ms) + node appearance (400ms) + extra delay
+            const highestScoreNodeDelay = initialDelay + (columnNodes.length - 1) * animationSpeed + 300 + 400; // Last node appears
+            const fadeDelay = highestScoreNodeDelay + 1000; // Wait 1 second after highest score node appears
+            safeTimeout(() => {
+                fadeLowerScoreNodes(column, columnIndex);
+            }, fadeDelay);
+            
+            // Move to next column after all nodes are shown
+            // For column 1 (index 0), question is already shown at the beginning, so skip showing it again
+            const showTitleDelay = initialDelay + columnNodes.length * animationSpeed + 1200;
+            
+            if (column.level > 0 && columnIndex !== 0) {
+                // For columns after column 1, show question at the end
+                safeTimeout(() => {
+                    showElement(
+                        svg.select(`g.column-title-group[data-column-index="${columnIndex}"]`).selectAll(".column-title"),
+                        0.8
+                    );
+                    safeTimeout(() => animateColumn(columnIndex + 1), 400 + 1000);
+                }, showTitleDelay);
+            } else {
+                // Level 0 or column 1: question already shown at beginning, just move to next column
+                safeTimeout(() => animateColumn(columnIndex + 1), showTitleDelay);
+            }
+        }
+        
+        // Update statistics
+        function updateStats() {
+            document.getElementById('visible-nodes').textContent = visibleNodes.size;
+            document.getElementById('visible-links').textContent = visibleLinks.size;
+            document.getElementById('current-level').textContent = currentLevel >= 0 ? currentLevel : '-';
+        }
+        
+        // Initialize on load
+        loadData();
+    </script>
+</body>
+</html>
+

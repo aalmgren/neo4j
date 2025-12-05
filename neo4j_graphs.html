@@ -15,6 +15,13 @@
             background: white;
             padding: 10px;
             margin: 0;
+            display: flex;
+            gap: 20px;
+        }
+        
+        .main-content {
+            flex: 1;
+            min-width: 0;
         }
         
         #svg-container {
@@ -23,6 +30,96 @@
             border: 1px solid #ddd;
             overflow: auto;
             position: relative;
+        }
+        
+        .legend-sidebar {
+            width: 280px;
+            min-width: 280px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+        
+        .legend-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .legend-category-section {
+            margin-bottom: 20px;
+        }
+        
+        .legend-category-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .legend-item:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        
+        .legend-color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .legend-label {
+            font-size: 13px;
+            color: #333;
+            flex: 1;
+        }
+        
+        .legend-level-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .legend-level-item:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        
+        .legend-level-circle {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .legend-level-label {
+            font-size: 13px;
+            color: #333;
+            flex: 1;
         }
         
         #hybrid-graph {
@@ -146,39 +243,55 @@
         
         .control-button {
             margin: 5px;
-            padding: 8px 16px;
+            padding: 10px 20px;
             background: #2196F3;
             color: white;
-            border: none;
-            border-radius: 4px;
+            border: 2px solid #1976D2;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s;
         }
         
         .control-button:hover {
             background: #1976D2;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .control-button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="svg-container">
-            <svg id="hybrid-graph"></svg>
-        </div>
-        
-        <div class="stats" id="stats">
+        <div class="main-content">
+            <div id="svg-container">
+                <svg id="hybrid-graph"></svg>
+            </div>
+            
+            <div class="stats" id="stats">
             <h4>Metrics by Level</h4>
             <div class="stats-grid" id="stats-grid"></div>
             <h4 style="margin-top: 20px;">Metrics by Category</h4>
             <div class="stats-grid" id="stats-category-grid"></div>
-            <div style="margin-top: 15px;">
-                <button class="control-button" onclick="toggleColorMode()" id="color-mode-btn" style="background: #FF9800;">
-                    Color by: Category
+            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="control-button" onclick="toggleColorMode()" id="color-mode-btn" style="background: #FF9800; border-color: #F57C00;">
+                    🎨 Color by: Category
                 </button>
-                <button class="control-button" onclick="zoomToFit()" style="margin-left: 10px; background: #4CAF50;">
-                    Zoom to Fit
+                <button class="control-button" onclick="zoomToFit()" style="background: #4CAF50; border-color: #388E3C;">
+                    🔍 Zoom to Fit
                 </button>
             </div>
+        </div>
+        
+        <div class="legend-sidebar" id="legend-sidebar">
+            <div class="legend-title">🎨 Color Legend</div>
+            <div id="legend-content"></div>
         </div>
     </div>
 
@@ -220,12 +333,71 @@
             }
         };
         
+        // Update legend based on current color mode
+        function updateLegend() {
+            const legendContent = document.getElementById('legend-content');
+            let html = '';
+            
+            if (colorMode === 'category') {
+                // Show category colors
+                html += '<div class="legend-category-section">';
+                html += '<div class="legend-category-title">Categories</div>';
+                
+                // Sort categories alphabetically
+                const sortedCategories = Object.entries(categoryColors).sort((a, b) => a[0].localeCompare(b[0]));
+                
+                sortedCategories.forEach(([category, color]) => {
+                    html += `
+                        <div class="legend-item">
+                            <div class="legend-color-box" style="background-color: ${color};"></div>
+                            <div class="legend-label">${category}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                
+                // Also show level colors as fallback
+                html += '<div class="legend-category-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">';
+                html += '<div class="legend-category-title">Levels (Fallback)</div>';
+                
+                Object.entries(levelColors).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).forEach(([level, color]) => {
+                    html += `
+                        <div class="legend-level-item">
+                            <div class="legend-level-circle" style="background-color: ${color};"></div>
+                            <div class="legend-level-label">Level ${level}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            } else {
+                // Show level colors
+                html += '<div class="legend-category-section">';
+                html += '<div class="legend-category-title">Levels</div>';
+                
+                Object.entries(levelColors).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).forEach(([level, color]) => {
+                    html += `
+                        <div class="legend-level-item">
+                            <div class="legend-level-circle" style="background-color: ${color};"></div>
+                            <div class="legend-level-label">Level ${level}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            }
+            
+            legendContent.innerHTML = html;
+        }
+        
         // Toggle color mode function
         function toggleColorMode() {
             colorMode = colorMode === 'category' ? 'level' : 'category';
             const btn = document.getElementById('color-mode-btn');
-            btn.textContent = `Color by: ${colorMode === 'category' ? 'Category' : 'Level'}`;
+            btn.textContent = `🎨 Color by: ${colorMode === 'category' ? 'Category' : 'Level'}`;
             btn.style.background = colorMode === 'category' ? '#FF9800' : '#2196F3';
+            btn.style.borderColor = colorMode === 'category' ? '#F57C00' : '#1976D2';
             
             // Update all node colors
             if (workflowNodesSelection) {
@@ -253,6 +425,40 @@
                     .style("fill", d => getNodeColor(d, 5))
                     .style("stroke", d => d3.color(getNodeColor(d, 5)).darker(1));
             }
+            
+            // Update legend
+            updateLegend();
+        }
+        
+        function showAllNodes() {
+            // Show all nodes
+            if (workflowNodesSelection) {
+                workflowNodesSelection.selectAll('circle').style("opacity", 1);
+                workflowNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            if (subStepNodesSelection) {
+                subStepNodesSelection.selectAll('circle').style("opacity", 1);
+                subStepNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            if (knowledgeNodesSelection) {
+                knowledgeNodesSelection.selectAll('circle').style("opacity", 1);
+                knowledgeNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            if (detailNodesSelection) {
+                detailNodesSelection.selectAll('circle').style("opacity", 1);
+                detailNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            if (subItemNodesSelection) {
+                subItemNodesSelection.selectAll('circle').style("opacity", 1);
+                subItemNodesSelection.attr("transform", d => `translate(${d.x},${d.y})`);
+            }
+            
+            // Show all links
+            d3.selectAll(".level1-link").style("stroke-opacity", 0.6);
+            d3.selectAll(".level2-link").style("stroke-opacity", 0.5);
+            d3.selectAll(".level3-link").style("stroke-opacity", 0.45);
+            d3.selectAll(".level4-link").style("stroke-opacity", 0.4);
+            d3.selectAll(".level5-link").style("stroke-opacity", 0.35);
         }
         
         // Configuração
@@ -510,9 +716,11 @@
                 drawWorkflow();
                 setupSimulation();
                 updateStats();
+                updateLegend(); // Initialize legend
                 
-                // Auto zoom to fit after data loads
+                // Show all nodes initially
                 setTimeout(() => {
+                    showAllNodes();
                     zoomToFit();
                 }, 500); // Small delay to ensure nodes are positioned
                 
@@ -644,7 +852,10 @@
                 .attr("r", 30)
                 .style("fill", d => getNodeColor(d, 1))
                 .style("stroke", d => d3.color(getNodeColor(d, 1)).darker(1))
-                .style("stroke-width", 2);
+                .style("stroke-width", 2)
+                .style("opacity", 1);
+            
+            workflowNodes.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
             
             workflowNodesSelection = workflowNodes;
 
@@ -663,7 +874,10 @@
                 .attr("r", 15)
                 .style("fill", d => getNodeColor(d, 2))
                 .style("stroke", d => d3.color(getNodeColor(d, 2)).darker(1))
-                .style("stroke-width", 2);
+                .style("stroke-width", 2)
+                .style("opacity", 1);
+            
+            subStepNodes.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
             
             subStepNodesSelection = subStepNodes;
 
@@ -682,7 +896,10 @@
                 .attr("r", 8)
                 .style("fill", d => getNodeColor(d, 3))
                 .style("stroke", d => d3.color(getNodeColor(d, 3)).darker(1))
-                .style("stroke-width", 1.5);
+                .style("stroke-width", 1.5)
+                .style("opacity", 1);
+            
+            knowledgeNodes.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
             
             knowledgeNodesSelection = knowledgeNodes;
             
@@ -701,7 +918,10 @@
                 .attr("r", 5)
                 .style("fill", d => getNodeColor(d, 4))
                 .style("stroke", d => d3.color(getNodeColor(d, 4)).darker(1))
-                .style("stroke-width", 1);
+                .style("stroke-width", 1)
+                .style("opacity", 1);
+            
+            detailNodes.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
             
             detailNodesSelection = detailNodes;
             
@@ -720,7 +940,10 @@
                 .attr("r", 3)
                 .style("fill", d => getNodeColor(d, 5))
                 .style("stroke", d => d3.color(getNodeColor(d, 5)).darker(1))
-                .style("stroke-width", 0.5);
+                .style("stroke-width", 0.5)
+                .style("opacity", 1);
+            
+            subItemNodes.attr("transform", d => `translate(${d.x || 0},${d.y || 0})`);
             
             subItemNodesSelection = subItemNodes;
 

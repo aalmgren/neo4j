@@ -1,0 +1,210 @@
+{
+  "columns": [
+    {
+      "id": "col_0",
+      "title": "Load Data",
+      "level": 0,
+      "nodes": [
+        {
+          "id": "assay_csv",
+          "name": "assay.csv",
+          "type": "input",
+          "description": "File with oxides: Ni, SiO₂, MgO, Fe₂O₃, Co, Al₂O₃",
+          "elements": ["Ni", "SiO₂", "MgO", "Fe₂O₃", "Co", "Al₂O₃"]
+        }
+      ]
+    },
+    {
+      "id": "col_1",
+      "title": "Given Ni, SiO₂, MgO, etc., which mineral deposit is most probable?",
+      "level": 1,
+      "nodes": [
+        {
+          "id": "deposit_ni_lateritic",
+          "name": "Ni Lateritic\nDeposit",
+          "type": "deposit",
+          "description": "Nickel Lateritic Deposit",
+          "score": 0.95
+        },
+        {
+          "id": "deposit_ni_magmatic",
+          "name": "Ni Magmatic\nSulfide Deposit",
+          "type": "deposit",
+          "description": "Nickel Magmatic Sulfide Deposit",
+          "score": 0.65
+        },
+        {
+          "id": "deposit_si",
+          "name": "Si Deposit",
+          "type": "deposit",
+          "description": "Silicon Deposit",
+          "score": 0.25
+        },
+        {
+          "id": "deposit_mg",
+          "name": "Mg Deposit",
+          "type": "deposit",
+          "description": "Magnesium Deposit",
+          "score": 0.15
+        }
+      ]
+    },
+    {
+      "id": "col_2",
+      "title": "Lateritic deposits typically have which geometries?",
+      "level": 2,
+      "nodes": [
+        {
+          "id": "zoneamento_vertical",
+          "name": "Vertical\nZoning",
+          "type": "characteristic",
+          "description": "Vertical zoning typical of lateritic deposits",
+          "score": 0.90
+        },
+        {
+          "id": "disseminated",
+          "name": "Disseminated",
+          "type": "characteristic",
+          "description": "Disseminated mineralization geometry - fine-grained distribution throughout host rock",
+          "score": 0.45
+        },
+        {
+          "id": "vein_type",
+          "name": "Vein Type",
+          "type": "characteristic",
+          "description": "Vein-type geometry with tabular, sheet-like mineralization",
+          "score": 0.30
+        },
+        {
+          "id": "mineralizacao_massiva",
+          "name": "Massive\nMineralization",
+          "type": "characteristic",
+          "description": "Massive mineralization geometry - more common in magmatic than lateritic deposits",
+          "score": 0.25
+        }
+      ]
+    },
+    {
+      "id": "col_3",
+      "title": "Excellent! Vertical zoning most probable. Now lets execute some actions to corroborate this zoning",
+      "level": 3,
+      "nodes": [
+        {
+          "id": "generate_trend_analysis",
+          "name": "Generate Trend\nAnalysis Graphs",
+          "type": "action",
+          "description": "Automated generation of vertical trend analysis graphs (Ni, Fe₂O₃, SiO₂ vs depth)",
+          "score": 0.95
+        },
+        {
+          "id": "cluster_analysis_zones",
+          "name": "Define Cluster Analysis\nfor Zone Identification",
+          "type": "action",
+          "description": "Automated cluster analysis to statistically identify distinct zones",
+          "score": 0.92
+        },
+        {
+          "id": "generate_stratigraphic_columns",
+          "name": "Generate Stratigraphic\nColumn Images",
+          "type": "action",
+          "description": "Automated generation of stratigraphic column visualizations from drillhole data",
+          "score": 0.90
+        },
+        {
+          "id": "statistical_zone_separation",
+          "name": "Perform Statistical\nZone Separation",
+          "type": "action",
+          "description": "Automated statistical analysis to separate and classify zones",
+          "score": 0.87
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "source": "assay_csv",
+      "target": "deposit_ni_lateritic",
+      "score": 0.95,
+      "reasoning": "MENTAL SHORTCUT: The Ni + SiO₂ + MgO + Fe₂O₃ + Co + Al₂O₃ combination is a classic pattern of lateritic deposits (e.g., New Caledonia, Indonesia, Philippines). High Fe₂O₃ indicates limonite/goethite zones, while Co is a strong indicator of lateritic Ni deposits. Experienced geologists recognize this association quickly. <em>Note: Context matters - similar signatures can occur in other settings.</em>",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "assay_csv",
+      "target": "deposit_ni_magmatic",
+      "score": 0.65,
+      "reasoning": "Moderate heuristic: Presence of Ni may indicate magmatic origin, but additional geological context is missing.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "assay_csv",
+      "target": "deposit_si",
+      "score": 0.25,
+      "reasoning": "Weak mental shortcut: Si alone is not sufficient indicator of siliceous deposit. More evidence needed.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "assay_csv",
+      "target": "deposit_mg",
+      "score": 0.15,
+      "reasoning": "Very weak heuristic: The presence of Mg in this context does not suggest magnesium deposit. It is a common element in many contexts.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "deposit_ni_lateritic",
+      "target": "zoneamento_vertical",
+      "score": 0.90,
+      "reasoning": "MENTAL SHORTCUT: Lateritic deposits typically show well-defined vertical zoning (saprolite → limonite → goethite zones). This is a well-documented pattern in laterite geology. <em>Exception: Some deposits may show complex or disrupted zoning.</em>",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "deposit_ni_lateritic",
+      "target": "disseminated",
+      "score": 0.45,
+      "reasoning": "Moderate heuristic: Some lateritic deposits show disseminated geometry, especially in transition zones, but vertical zoning is more typical.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "deposit_ni_lateritic",
+      "target": "vein_type",
+      "score": 0.30,
+      "reasoning": "Weak heuristic: Vein-type geometry is uncommon in lateritic deposits, which typically form as blanket-like zones rather than discrete veins.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "deposit_ni_lateritic",
+      "target": "mineralizacao_massiva",
+      "score": 0.25,
+      "reasoning": "Very weak heuristic: Massive mineralization geometry is more typical of magmatic sulfide deposits than lateritic ones.",
+      "linkType": "heuristic"
+    },
+    {
+      "source": "zoneamento_vertical",
+      "target": "generate_trend_analysis",
+      "score": 0.95,
+      "reasoning": "ACTION: Generate automated trend analysis graphs to visualize vertical patterns in Ni, Fe₂O₃, SiO₂. This confirms the inferred vertical zoning through data visualization.",
+      "linkType": "action"
+    },
+    {
+      "source": "zoneamento_vertical",
+      "target": "cluster_analysis_zones",
+      "score": 0.92,
+      "reasoning": "ACTION: Execute cluster analysis to statistically identify distinct zones. This validates the vertical zoning hypothesis through automated pattern recognition.",
+      "linkType": "action"
+    },
+    {
+      "source": "zoneamento_vertical",
+      "target": "generate_stratigraphic_columns",
+      "score": 0.90,
+      "reasoning": "ACTION: Generate stratigraphic column images from drillhole data. Visual representation confirms vertical zoning structure.",
+      "linkType": "action"
+    },
+    {
+      "source": "zoneamento_vertical",
+      "target": "statistical_zone_separation",
+      "score": 0.87,
+      "reasoning": "ACTION: Perform statistical zone separation analysis. Automated classification confirms distinct vertical zones.",
+      "linkType": "action"
+    }
+  ]
+}
+

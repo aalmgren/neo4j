@@ -6,31 +6,24 @@ __pycache__/
 .Python
 env/
 venv/
-*.egg-info/
-dist/
-build/
+ENV/
+.venv
 
-# Arquivos temporários
-*.old
-*.bak
-*.tmp
-
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 
-# Arquivos de backup
-*_backup.json
-*_remote_backup.json
-*_1.json
-
-# Dados sensíveis (se houver)
-.env
-*.key
-*.pem
-
+# Temporary files
+*.tmp
+*.bak
+*.backup
