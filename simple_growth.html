@@ -831,8 +831,8 @@
                         const titleX = colWidth * colIndex;  // 1 level to the left (previous column position)
                         // For first question (colIndex === 0), position it lower and use larger font
                         const isFirstQuestion = colIndex === 0;
-                        // Use workingHeight (extended SVG height) for positioning
-                        const titleY = isFirstQuestion ? workingHeight * 0.70 + 25 : workingHeight * 0.70 + 10;  // Moved up from 0.75 to 0.70
+                        // Use workingHeight (extended SVG height) for positioning - moved up more to avoid overlap
+                        const titleY = isFirstQuestion ? workingHeight * 0.65 + 20 : workingHeight * 0.65 + 5;  // Moved up from 0.70 to 0.65
                         
                         // Create title as separate group, not attached to nodes
                         const titleGroup = g.append("g")
