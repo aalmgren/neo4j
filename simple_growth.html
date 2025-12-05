@@ -32,27 +32,27 @@
         
         #graph-container {
             width: 100%;
-            min-height: 600px;
-            height: calc(100vh - 200px); /* Responsive height based on viewport */
-            max-height: 900px; /* Maximum height for large monitors */
+            min-height: 500px;
+            height: calc(100vh - 150px); /* Reduced from 200px to 150px - less frame space */
+            max-height: none; /* Remove max-height limit to allow content to show */
             border: 1px solid #ddd;
             border-radius: 4px;
             background: #fafafa;
-            overflow: hidden; /* Prevent horizontal scroll */
+            overflow: visible; /* Changed from hidden to visible - allow content to show */
             position: relative;
         }
         
         @media (max-width: 1366px) {
             #graph-container {
-                height: calc(100vh - 150px);
-                min-height: 500px;
+                height: calc(100vh - 120px); /* Reduced frame space */
+                min-height: 450px;
             }
         }
         
         @media (max-width: 1024px) {
             #graph-container {
-                height: calc(100vh - 120px);
-                min-height: 450px;
+                height: calc(100vh - 100px); /* Reduced frame space */
+                min-height: 400px;
             }
         }
         
@@ -214,8 +214,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Heuristic Reasoning in MIneral Resources Estimation</h1>
-        <p style="color: #666; font-size: 14px; margin-top: -10px; margin-bottom: 20px;">
+         <p style="color: #666; font-size: 14px; margin-top: -10px; margin-bottom: 20px;">
             This visualization simulates the <strong>mental shortcuts</strong> that an experienced geologist uses to infer mineral deposit characteristics from assay data.
             <br>The connections show heuristic associations (practical rules) based on experience, not exhaustive calculations.
             <br><strong style="color: #d32f2f;">⚠️ Important:</strong> This is a <em>teaching tool</em> to illustrate reasoning patterns. Real geological interpretation requires comprehensive analysis, field observations, and considers exceptions. Scores represent <em>typical</em> associations, not certainties.
@@ -274,10 +273,13 @@
         const width = container.clientWidth;
         const height = container.clientHeight;
         
+        // Calculate SVG height with extra space for text at bottom
+        const svgHeight = height + 100; // Add 100px extra space for bottom text
+        
         svg = d3.select("#graph")
             .attr("width", width)
-            .attr("height", height)
-            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("height", svgHeight) // Use extended height
+            .attr("viewBox", `0 0 ${width} ${svgHeight}`) // Extended viewBox
             .attr("preserveAspectRatio", "xMidYMid meet");
         
         // Global column data
@@ -290,6 +292,9 @@
                 const data = await response.json();
                 
                 columns = data.columns;
+                
+                // Use svgHeight (extended) for positioning calculations
+                const workingHeight = svgHeight;
                 
                 // Process all nodes from columns - HORIZONTAL LAYOUT (left to right)
                 nodes = [];
@@ -305,8 +310,8 @@
                     col.nodes.forEach((node, nodeIndex) => {
                         const nodePosition = sortedNodes.findIndex(n => n.id === node.id);
                         const totalInCol = col.nodes.length;
-                        const usableHeight = height * 0.65; // Use 65% of height for nodes (leave 35% for questions at bottom)
-                        const startY = height * 0.05; // Start 5% from top
+                        const usableHeight = workingHeight * 0.65; // Use 65% of height for nodes (leave 35% for questions at bottom)
+                        const startY = workingHeight * 0.05; // Start 5% from top
                         const spacing = usableHeight / (totalInCol + 1);
                         const y = startY + spacing * (nodePosition + 1);
                         
@@ -619,13 +624,13 @@
                 .style("text-anchor", "middle")
                 .style("pointer-events", "none");
             
-            // Draw fixed legend in top-right corner (responsive positioning)
+            // Draw fixed legend in top-right corner (responsive positioning, moved down)
             const legendGroup = svg.append("g").attr("id", "legend-group");
-            const legendWidth = 200;
-            const legendHeight = 140;
+            const legendWidth = 180; // Reduced width
+            const legendHeight = 85; // Reduced height (only 3 items, compact)
             // Ensure legend doesn't go off screen - responsive positioning
             const legendX = Math.max(width - legendWidth - 10, 10); // At least 10px from right edge, minimum 10px from left
-            const legendY = 20;
+            const legendY = 70; // Moved down from 20 to 70
             
             // Legend background
             legendGroup.append("rect")
@@ -642,9 +647,9 @@
             // Legend title
             legendGroup.append("text")
                 .attr("x", legendX + 10)
-                .attr("y", legendY + 20)
+                .attr("y", legendY + 18)
                 .text("Connection Types")
-                .style("font-size", width > 800 ? "14px" : "12px") // Responsive font size
+                .style("font-size", width > 800 ? "12px" : "11px") // Reduced font size
                 .style("font-weight", "bold")
                 .style("fill", "#333");
             
@@ -656,23 +661,23 @@
             ];
             
             legendItems.forEach((item, idx) => {
-                const itemY = legendY + 40 + (idx * 20);
+                const itemY = legendY + 32 + (idx * 18); // Reduced spacing (was 40 + idx * 20, now 32 + idx * 18)
                 
                 // Color line
                 legendGroup.append("line")
                     .attr("x1", legendX + 10)
                     .attr("y1", itemY)
-                    .attr("x2", legendX + 40)
+                    .attr("x2", legendX + 35) // Reduced line length (was 40)
                     .attr("y2", itemY)
                     .style("stroke", item.color)
-                    .style("stroke-width", 3);
+                    .style("stroke-width", 2.5); // Slightly thinner (was 3)
                 
                 // Label
                 legendGroup.append("text")
-                    .attr("x", legendX + 45)
+                    .attr("x", legendX + 40) // Adjusted position (was 45)
                     .attr("y", itemY + 4)
                     .text(item.label)
-                    .style("font-size", width > 800 ? "11px" : "9px") // Responsive font size
+                    .style("font-size", width > 800 ? "10px" : "9px") // Reduced font size
                     .style("fill", "#333");
             });
             
@@ -824,7 +829,8 @@
                         const titleX = colWidth * colIndex;  // 1 level to the left (previous column position)
                         // For first question (colIndex === 0), position it lower and use larger font
                         const isFirstQuestion = colIndex === 0;
-                        const titleY = isFirstQuestion ? height * 0.75 + 40 : height * 0.75 + 20;  // First question lower
+                        // Use workingHeight (extended SVG height) for positioning
+                        const titleY = isFirstQuestion ? workingHeight * 0.70 + 25 : workingHeight * 0.70 + 10;  // Moved up from 0.75 to 0.70
                         
                         // Create title as separate group, not attached to nodes
                         const titleGroup = g.append("g")
