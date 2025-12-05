@@ -275,6 +275,8 @@
         
         // Calculate SVG height with extra space for text at bottom
         const svgHeight = height + 100; // Add 100px extra space for bottom text
+        // Global working height for positioning calculations
+        let workingHeight = svgHeight;
         
         svg = d3.select("#graph")
             .attr("width", width)
@@ -293,8 +295,8 @@
                 
                 columns = data.columns;
                 
-                // Use svgHeight (extended) for positioning calculations
-                const workingHeight = svgHeight;
+                // Update global workingHeight for positioning calculations
+                workingHeight = svgHeight;
                 
                 // Process all nodes from columns - HORIZONTAL LAYOUT (left to right)
                 nodes = [];
